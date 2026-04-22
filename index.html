@@ -1,368 +1,384 @@
-import { useState, useCallback } from "react";
-import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>派訓名單轉換工具 V4.2</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg2:#f5f5f4;--bg3:#eeede9;
+  --border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);
+  --text:#1a1a18;--text2:#6b6b67;--text3:#9b9b97;
+  --blue:#185FA5;--blue-bg:#E6F1FB;
+  --green:#3B6D11;--green-bg:#EAF3DE;--green-bd:#C0DD97;
+  --r:10px;--rs:6px
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif;background:var(--bg3);color:var(--text);min-height:100vh;padding:2rem 1rem}
+.wrap{max-width:720px;margin:0 auto}
+h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
+.sub{font-size:14px;color:var(--text2);margin-bottom:2rem}
+.steps{display:flex;align-items:center;margin-bottom:.75rem}
+.sdot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;border:1.5px solid var(--border2);background:var(--bg2);color:var(--text2)}
+.sdot.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.sdot.done{background:var(--green);color:#fff;border-color:var(--green)}
+.sline{flex:1;height:2px;background:var(--border)}
+.sline.done{background:var(--green)}
+.slabels{display:flex;margin-bottom:1.5rem}
+.slabel{flex:1;font-size:12px;color:var(--text3);text-align:center}
+.slabel:first-child{text-align:left}.slabel:last-child{text-align:right}
+.slabel.active{color:var(--blue);font-weight:600}.slabel.done{color:var(--green)}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.ptitle{font-size:16px;font-weight:600;margin-bottom:.75rem}
+.pdesc{font-size:13px;color:var(--text2);margin-bottom:1rem;line-height:1.5}
+.dstatus{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--rs);border:1px solid var(--border);margin-bottom:1rem;font-size:13px;background:var(--bg2);color:var(--text2)}
+.dstatus.ok{background:var(--green-bg);border-color:var(--green-bd);color:var(--green)}
+.dropzone{display:block;width:100%;border:2px dashed var(--border2);border-radius:var(--rs);padding:2rem;text-align:center;cursor:pointer;background:var(--bg2);transition:all .2s;position:relative}
+.dropzone:hover,.dropzone.drag{border-color:var(--blue);background:var(--blue-bg)}
+.dropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dropzone span{font-size:13px;color:var(--text2);pointer-events:none}
+.flist{border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;margin-bottom:1rem}
+.frow{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;background:var(--bg)}
+.frow:last-child{border-bottom:none}
+.fremove{border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 4px}
+.fremove:hover{color:#c00}
+.brow{display:flex;gap:10px;justify-content:flex-end;margin-top:1.5rem}
+.btn{font-size:14px;font-weight:600;padding:10px 22px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--bg);color:var(--text);transition:all .15s}
+.btn:hover{background:var(--bg2)}
+.btn.p{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.p:hover{background:#0d4d8a}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.log{background:#1e1e1e;border-radius:var(--rs);padding:15px;font-size:12px;font-family:'SF Mono','Consolas',monospace;color:#ccc;max-height:200px;overflow-y:auto;line-height:1.8}
+.log .ok{color:#7ec870}.log .info{color:#79b8ff}.log .err{color:#f08080}
+.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:1.5rem}
+.scard{background:var(--bg2);border-radius:var(--rs);padding:1rem;text-align:center;border:1px solid var(--border)}
+.snum{font-size:28px;font-weight:700}
+.slbl2{font-size:11px;color:var(--text2);margin-top:4px}
+.dl-item{display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid var(--border)}
+.dl-item:last-of-type{border-bottom:none}
+.dl-name{font-size:14px;font-weight:600}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📋 派訓名單轉換工具 V4.2</h1>
+  <p class="sub">自動對應部門、工號嚴格排序、動態同步表頭</p>
 
-// ─── 顏色變數 ───────────────────────────────────────────────────────────────
-const C = {
-  bg: "#F7F6F2", bg2: "#EEECEA", bg3: "#fff",
-  border: "rgba(0,0,0,.10)", border2: "rgba(0,0,0,.18)",
-  text: "#1a1a18", text2: "#6b6b67", text3: "#9b9b97",
-  blue: "#185FA5", blueBg: "#E6F1FB",
-  green: "#3B6D11", greenBg: "#EAF3DE", greenBd: "#C0DD97",
-  red: "#A32D2D",
-};
+  <!-- 步驟列 -->
+  <div class="steps">
+    <div class="sdot active" id="dot1">1</div><div class="sline" id="line1"></div>
+    <div class="sdot" id="dot2">2</div><div class="sline" id="line2"></div>
+    <div class="sdot" id="dot3">3</div><div class="sline" id="line3"></div>
+    <div class="sdot" id="dot4">4</div>
+  </div>
+  <div class="slabels">
+    <span class="slabel active" id="lbl1">人事資料</span>
+    <span class="slabel" id="lbl2">課程資訊</span>
+    <span class="slabel" id="lbl3">派訓名單</span>
+    <span class="slabel" id="lbl4">產出結果</span>
+  </div>
 
-// ─── 工具函式 ────────────────────────────────────────────────────────────────
+  <!-- Step 1 -->
+  <div id="step1">
+    <div class="panel">
+      <div class="ptitle">1. 上傳人事總表</div>
+      <div class="pdesc">用於自動對應學員姓名與部門別。需包含「工號」、「姓名」、「部門」欄位。</div>
+      <div class="dstatus" id="s1status">未載入人事資料</div>
+      <label class="dropzone" id="dz1">
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleStaff(this.files)">
+        <span>點擊或拖曳上傳 .xlsx / .xls / .csv</span>
+      </label>
+    </div>
+    <div class="brow"><button class="btn p" onclick="goStep(2)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 2 -->
+  <div id="step2" class="hidden">
+    <div class="panel">
+      <div class="ptitle">2. 上傳課程資訊表</div>
+      <div class="pdesc">此內容將自動填入簽到表與看板的表頭欄位。需包含「課程代號」欄位。</div>
+      <div class="dstatus" id="s2status">未載入課程資訊</div>
+      <label class="dropzone" id="dz2">
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleCourse(this.files)">
+        <span>點擊或拖曳上傳 .xlsx / .xls / .csv</span>
+      </label>
+    </div>
+    <div class="brow">
+      <button class="btn" onclick="goStep(1)">← 上一步</button>
+      <button class="btn p" onclick="goStep(3)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div id="step3" class="hidden">
+    <div class="panel">
+      <div class="ptitle">3. 上傳派訓名單（學員 A 檔）</div>
+      <div class="pdesc">可同時選取多個檔案，重複派訓會自動剔除。</div>
+      <div id="flist" class="flist hidden"></div>
+      <label class="dropzone" id="dz3">
+        <input type="file" accept=".xlsx,.xls" multiple onchange="addFiles(this.files)">
+        <span>+ 新增多份名單檔案 .xlsx / .xls</span>
+      </label>
+    </div>
+    <div class="brow">
+      <button class="btn" onclick="goStep(2)">← 上一步</button>
+      <button class="btn p" id="btnConvert" onclick="startConvert()" disabled>執行轉換與同步 ▶</button>
+    </div>
+  </div>
+
+  <!-- Step 4 -->
+  <div id="step4" class="hidden">
+    <div class="panel"><div class="log" id="logArea"></div></div>
+    <div id="resultPanel" class="hidden">
+      <div class="panel">
+        <div class="sgrid" id="sgrid"></div>
+        <div class="dl-item"><span class="dl-name">📊 Data All 總表（工號排序）</span><button class="btn p" id="btnAll">下載 Excel</button></div>
+        <div class="dl-item"><span class="dl-name">📝 簽到表合輯（表頭動態同步）</span><button class="btn p" id="btnSign">下載 Excel</button></div>
+        <div class="dl-item"><span class="dl-name">📺 課程看板（列印為 PDF）</span><button class="btn p" id="btnBoard">開啟列印</button></div>
+        <div class="brow" style="margin-top:2rem"><button class="btn" onclick="location.reload()">重新開始</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let sMap = {}, cMap = {}, tFiles = [], finalResults = [];
+
+// ── 工具 ──────────────────────────────────────────────────────────────────────
 function fk(row, ...targets) {
   return Object.keys(row).find(k =>
     targets.some(t => String(k).trim().toLowerCase().includes(t.toLowerCase()))
   );
 }
 
-function parseStaff(data) {
-  const map = {};
-  data.forEach(r => {
-    const id = String(r[fk(r, "工號", "Staff ID", "ID")] || "").trim();
-    if (id) map[id] = { name: r[fk(r, "姓名", "Name")], dept: r[fk(r, "部門", "Dept", "單位")] };
-  });
-  return map;
+function goStep(n) {
+  [1,2,3,4].forEach(i => document.getElementById('step'+i).classList.toggle('hidden', i!==n));
+  updateStepUI(n);
 }
 
-function parseCourse(data) {
-  const map = {};
+function updateStepUI(cur) {
+  [1,2,3,4].forEach(i => {
+    const dot = document.getElementById('dot'+i);
+    const lbl = document.getElementById('lbl'+i);
+    dot.className = 'sdot' + (i < cur ? ' done' : i === cur ? ' active' : '');
+    dot.textContent = i < cur ? '✓' : i;
+    if(lbl) lbl.className = 'slabel' + (i < cur ? ' done' : i === cur ? ' active' : '');
+    if(i < 4) {
+      const line = document.getElementById('line'+i);
+      if(line) line.className = 'sline' + (i < cur ? ' done' : '');
+    }
+  });
+}
+
+function log(m, c) {
+  const el = document.getElementById('logArea');
+  el.innerHTML += `<div class="${c||''}">${m}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── 拖曳支援 ──────────────────────────────────────────────────────────────────
+['dz1','dz2','dz3'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drag');
+    const files = e.dataTransfer.files;
+    if (id === 'dz1') handleStaff(files);
+    else if (id === 'dz2') handleCourse(files);
+    else addFiles(files);
+  });
+});
+
+// ── Step 1: 人事總表 ──────────────────────────────────────────────────────────
+async function handleStaff(fs) {
+  const ab = await fs[0].arrayBuffer();
+  const wb = XLSX.read(ab);
+  const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {raw:false});
+  sMap = {};
   data.forEach(r => {
-    const id = String(r[fk(r, "課程代號", "Course", "代號")] || "").trim();
-    if (id) map[id] = {
-      name: r[fk(r, "課程名稱", "Name")] || "",
-      date: r[fk(r, "日期", "Date")] || "",
-      time: r[fk(r, "時間", "Time")] || "",
-      dur: r[fk(r, "時數", "Duration")] || "",
-      lecturer: r[fk(r, "講師", "Lecturer")] || "",
+    const id = String(r[fk(r,'工號','Staff ID','ID')]||'').trim();
+    if (id) sMap[id] = { name: r[fk(r,'姓名','Name')], dept: r[fk(r,'部門','Dept','單位')] };
+  });
+  const el = document.getElementById('s1status');
+  el.className = 'dstatus ok';
+  el.textContent = `✅ 已成功載入 ${Object.keys(sMap).length} 筆人員資料`;
+}
+
+// ── Step 2: 課程資訊 ──────────────────────────────────────────────────────────
+async function handleCourse(fs) {
+  const ab = await fs[0].arrayBuffer();
+  const wb = XLSX.read(ab);
+  const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {raw:false});
+  cMap = {};
+  data.forEach(r => {
+    const id = String(r[fk(r,'課程代號','Course','代號')]||'').trim();
+    if (id) cMap[id] = {
+      name:     r[fk(r,'課程名稱','Name')]     || '',
+      date:     r[fk(r,'日期','Date')]         || '',
+      time:     r[fk(r,'時間','Time')]         || '',
+      dur:      r[fk(r,'時數','Duration')]     || '',
+      lecturer: r[fk(r,'講師','Lecturer')]     || '',
     };
   });
-  return map;
+  const el = document.getElementById('s2status');
+  el.className = 'dstatus ok';
+  el.textContent = `✅ 已成功載入 ${Object.keys(cMap).length} 門課程資訊`;
 }
 
-async function readXlsx(file) {
-  const ab = await file.arrayBuffer();
-  return XLSX.read(ab);
+// ── Step 3: 派訓名單檔案 ──────────────────────────────────────────────────────
+function addFiles(fs) {
+  Array.from(fs).forEach(f => tFiles.push(f));
+  renderFileList();
 }
 
-// ─── 下載 DataAll ────────────────────────────────────────────────────────────
-function downloadDataAll(results, cMap) {
-  const out = results.map(r => {
+function removeFile(i) {
+  tFiles.splice(i, 1);
+  renderFileList();
+}
+
+function renderFileList() {
+  const el = document.getElementById('flist');
+  document.getElementById('btnConvert').disabled = tFiles.length === 0;
+  if (tFiles.length === 0) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = tFiles.map((f,i) =>
+    `<div class="frow"><span>📄 ${f.name}</span><button class="fremove" onclick="removeFile(${i})">✕</button></div>`
+  ).join('');
+}
+
+// ── Step 4: 轉換 ──────────────────────────────────────────────────────────────
+async function startConvert() {
+  goStep(4);
+  finalResults = [];
+  const seen = new Set();
+  log('▶ 啟動名單處理與工號排序程序...', 'info');
+
+  for (const file of tFiles) {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+    const hIdx = data.findIndex(r => r.some(c => String(c).includes('工號')));
+    if (hIdx === -1) { log(`❌ ${file.name}：找不到「工號」標題列`, 'err'); continue; }
+
+    const head = data[hIdx];
+    const iID = head.findIndex(c => String(c).includes('工號'));
+
+    for (let r = hIdx+1; r < data.length; r++) {
+      const id = String(data[r][iID]||'').trim();
+      if (!id || id === 'undefined') continue;
+      const staff = sMap[id] || {};
+      for (let c = iID+1; c < head.length; c++) {
+        const code  = String(head[c]).trim();
+        const rCode = String(data[r][c]||'').trim();
+        if (!rCode || rCode === 'null') continue;
+        if (seen.has(`${id}_${code}`)) continue;
+        seen.add(`${id}_${code}`);
+        finalResults.push({ Course:code, StaffID:id, Name:staff.name||'', Dept:staff.dept||'', R_Code:rCode });
+      }
+    }
+    log(`✔ 處理完成：${file.name}`, 'ok');
+  }
+
+  finalResults.sort((a,b) => a.StaffID.localeCompare(b.StaffID, undefined, {numeric:true}));
+  log(`✅ 全部完成！共 ${finalResults.length} 筆派訓記錄`, 'ok');
+
+  const courses = new Set(finalResults.map(r => r.Course)).size;
+  document.getElementById('sgrid').innerHTML = `
+    <div class="scard"><div class="snum">${finalResults.length}</div><div class="slbl2">總記錄數</div></div>
+    <div class="scard"><div class="snum">${courses}</div><div class="slbl2">課程數量</div></div>`;
+  document.getElementById('resultPanel').classList.remove('hidden');
+
+  document.getElementById('btnAll').onclick   = downloadDataAll;
+  document.getElementById('btnSign').onclick  = downloadSignSheets;
+  document.getElementById('btnBoard').onclick = downloadCourseBoard;
+}
+
+// ── 產出 1: Data All ──────────────────────────────────────────────────────────
+function downloadDataAll() {
+  const out = finalResults.map(r => {
     const c = cMap[r.Course] || {};
-    return { "課程代號": r.Course, "課程名稱": c.name, "日期": c.date, "工號": r.StaffID, "姓名": r.Name, "部門": r.Dept, "梯次": r.R_Code };
+    return {'課程代號':r.Course,'課程名稱':c.name,'日期':c.date,'工號':r.StaffID,'姓名':r.Name,'部門':r.Dept,'梯次':r.R_Code};
   });
   const ws = XLSX.utils.json_to_sheet(out);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "DataAll");
-  XLSX.writeFile(wb, "Converted_DataAll.xlsx");
+  XLSX.utils.book_append_sheet(wb, ws, 'DataAll');
+  XLSX.writeFile(wb, 'Converted_DataAll.xlsx');
 }
 
-// ─── 下載簽到表 ──────────────────────────────────────────────────────────────
-function downloadSignSheets(results, cMap) {
+// ── 產出 2: 簽到表 ────────────────────────────────────────────────────────────
+function downloadSignSheets() {
   const wb = XLSX.utils.book_new();
-  const groups = results.reduce((acc, obj) => {
-    (acc[obj.Course] = acc[obj.Course] || []).push(obj); return acc;
-  }, {});
-
+  const groups = groupBy(finalResults, 'Course');
   Object.keys(groups).forEach(code => {
     const list = groups[code]; const c = cMap[code] || {};
     const wsData = [
-      ["課 程 簽 到 表 (按工號排序)"],
-      ["課程代號", code, "課程名稱", c.name || "N/A"],
-      ["上課日期", c.date || "", "上課時間", c.time || ""],
-      ["上課講師", c.lecturer || "", "課程時數", c.dur || ""],
+      ['課 程 簽 到 表（按工號排序）'],
+      ['課程代號', code, '課程名稱', c.name||'N/A'],
+      ['上課日期', c.date||'', '上課時間', c.time||''],
+      ['上課講師', c.lecturer||'', '課程時數', c.dur||''],
       [],
-      ["序號", "學員工號", "姓名", "部門", "簽到欄 (Signature)", "備註"],
+      ['序號','學員工號','姓名','部門','簽到欄 (Signature)','備註']
     ];
-    list.forEach((s, i) => wsData.push([i + 1, s.StaffID, s.Name, s.Dept, "", ""]));
+    list.forEach((s,i) => wsData.push([i+1, s.StaffID, s.Name, s.Dept, '', '']));
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws["!cols"] = [{ wch: 6 }, { wch: 15 }, { wch: 15 }, { wch: 22 }, { wch: 30 }, { wch: 15 }];
-    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
-    XLSX.utils.book_append_sheet(wb, ws, code.substring(0, 30));
+    ws['!cols'] = [{wch:6},{wch:15},{wch:15},{wch:22},{wch:30},{wch:15}];
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+    XLSX.utils.book_append_sheet(wb, ws, code.substring(0,30));
   });
-  XLSX.writeFile(wb, "簽到表合輯.xlsx");
+  XLSX.writeFile(wb, '簽到表合輯.xlsx');
 }
 
-// ─── 下載看板 PDF (純 HTML canvas → blob，不需 jsPDF CDN) ────────────────────
-function downloadCourseBoard(results, cMap) {
-  const groups = results.reduce((acc, obj) => {
-    (acc[obj.Course] = acc[obj.Course] || []).push(obj); return acc;
-  }, {});
+// ── 產出 3: 課程看板（列印視窗）────────────────────────────────────────────
+function downloadCourseBoard() {
+  const groups = groupBy(finalResults, 'Course');
+  const win = window.open('', '_blank');
+  if (!win) { alert('請允許彈出視窗以產生課程看板'); return; }
 
-  // 用瀏覽器原生列印替代 PDF（相容性最佳）
-  const codes = Object.keys(groups);
-  const win = window.open("", "_blank");
-  if (!win) { alert("請允許彈出視窗以產生看板 PDF"); return; }
-
-  const pages = codes.map(code => {
+  const pages = Object.keys(groups).map(code => {
     const c = cMap[code] || {};
-    return `
-    <div class="page">
+    return `<div class="page">
       <div class="box">
         <h1>學 員 派 訓 看 板</h1>
-        <hr/>
+        <hr>
         <table>
-          <tr><td class="lbl">課程名稱</td><td class="val">${c.name || code}</td></tr>
+          <tr><td class="lbl">課程名稱</td><td class="val">${c.name||code}</td></tr>
           <tr><td class="lbl">課程代號</td><td class="val">${code}</td></tr>
-          <tr><td class="lbl">上課日期</td><td class="val">${c.date || ""}</td></tr>
-          <tr><td class="lbl">上課時間</td><td class="val">${c.time || ""}</td></tr>
-          <tr><td class="lbl">上課講師</td><td class="val">${c.lecturer || ""}</td></tr>
+          <tr><td class="lbl">上課日期</td><td class="val">${c.date||''}</td></tr>
+          <tr><td class="lbl">上課時間</td><td class="val">${c.time||''}</td></tr>
+          <tr><td class="lbl">上課講師</td><td class="val">${c.lecturer||''}</td></tr>
           <tr><td class="lbl">預計人數</td><td class="val">${groups[code].length} 名</td></tr>
         </table>
         <p class="note">※ 請依工號序號完成簽名及報到作業</p>
       </div>
     </div>`;
-  }).join("");
+  }).join('');
 
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>課程看板</title>
   <style>
-    @media print { body { margin: 0 } .page { page-break-after: always } }
-    body { font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif; background:#fff }
-    .page { width:297mm; height:210mm; display:flex; align-items:center; justify-content:center; }
-    .box { border: 3px solid #333; padding: 30px 50px; width:260mm; }
-    h1 { font-size: 36px; text-align:center; letter-spacing:6px; margin-bottom:16px }
-    hr { border:1.5px solid #333; margin-bottom:24px }
-    table { width:100%; border-collapse:collapse }
-    td { padding: 10px 16px; font-size: 22px }
-    .lbl { color:#555; width:120px; white-space:nowrap }
-    .val { font-weight:600; color:#111 }
-    .note { text-align:center; margin-top:24px; font-size:14px; color:#777 }
+    @media print{body{margin:0}.page{page-break-after:always}}
+    body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;background:#fff}
+    .page{width:297mm;min-height:210mm;display:flex;align-items:center;justify-content:center;padding:10mm}
+    .box{border:3px solid #333;padding:30px 50px;width:100%}
+    h1{font-size:36px;text-align:center;letter-spacing:8px;margin-bottom:16px}
+    hr{border:1.5px solid #333;margin-bottom:24px}
+    table{width:100%;border-collapse:collapse}
+    td{padding:10px 16px;font-size:22px}
+    .lbl{color:#555;width:140px;white-space:nowrap}
+    .val{font-weight:600;color:#111}
+    .note{text-align:center;margin-top:24px;font-size:14px;color:#777}
   </style></head><body>${pages}
-  <script>window.onload=()=>{window.print()}<\/script></body></html>`);
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
   win.document.close();
 }
 
-// ─── 元件 ────────────────────────────────────────────────────────────────────
-const StepDot = ({ n, cur }) => {
-  const done = cur > n; const active = cur === n;
-  const bg = done ? C.green : active ? C.blue : C.bg2;
-  const color = done || active ? "#fff" : C.text2;
-  return (
-    <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, flexShrink: 0, border: `1.5px solid ${done ? C.green : active ? C.blue : C.border2}`, background: bg, color }}>
-      {done ? "✓" : n}
-    </div>
-  );
-};
-
-const StepLine = ({ done }) => (
-  <div style={{ flex: 1, height: 2, background: done ? C.green : C.border }} />
-);
-
-const Panel = ({ children }) => (
-  <div style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 10, padding: "1.5rem", marginBottom: "1.25rem", boxShadow: "0 1px 3px rgba(0,0,0,.04)" }}>
-    {children}
-  </div>
-);
-
-const Btn = ({ primary, onClick, children, disabled }) => (
-  <button disabled={disabled} onClick={onClick} style={{ fontSize: 14, fontWeight: 600, padding: "10px 22px", borderRadius: 6, cursor: disabled ? "not-allowed" : "pointer", border: `1px solid ${primary ? C.blue : C.border2}`, background: disabled ? C.bg2 : primary ? C.blue : C.bg3, color: disabled ? C.text3 : primary ? "#fff" : C.text, opacity: disabled ? 0.6 : 1, transition: "all .15s" }}>
-    {children}
-  </button>
-);
-
-const StatusBar = ({ ok, children }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 6, border: `1px solid ${ok ? C.greenBd : C.border}`, marginBottom: "1rem", fontSize: 13, background: ok ? C.greenBg : C.bg2, color: ok ? C.green : C.text2 }}>
-    {children}
-  </div>
-);
-
-const DropZone = ({ label, onChange, multiple, accept }) => {
-  const [drag, setDrag] = useState(false);
-  return (
-    <label onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); onChange(e.dataTransfer.files); }} style={{ display: "block", border: `2px dashed ${drag ? C.blue : C.border2}`, borderRadius: 6, padding: "2rem", textAlign: "center", cursor: "pointer", background: drag ? C.blueBg : C.bg2, transition: "all .2s", position: "relative" }}>
-      <input type="file" accept={accept} multiple={multiple} onChange={e => onChange(e.target.files)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }} />
-      <span style={{ fontSize: 13, color: C.text2 }}>{label}</span>
-    </label>
-  );
-};
-
-// ─── 主程式 ──────────────────────────────────────────────────────────────────
-export default function App() {
-  const [step, setStep] = useState(1);
-  const [sMap, setSMap] = useState({});
-  const [cMap, setCMap] = useState({});
-  const [tFiles, setTFiles] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [results, setResults] = useState([]);
-  const [done, setDone] = useState(false);
-
-  const addLog = (msg, type) => setLogs(l => [...l, { msg, type }]);
-
-  const handleStaff = useCallback(async fs => {
-    const wb = await readXlsx(fs[0]);
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { raw: false });
-    const map = parseStaff(data);
-    setSMap(map);
-  }, []);
-
-  const handleCourse = useCallback(async fs => {
-    const wb = await readXlsx(fs[0]);
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { raw: false });
-    const map = parseCourse(data);
-    setCMap(map);
-  }, []);
-
-  const addFiles = useCallback(fs => {
-    setTFiles(prev => [...prev, ...Array.from(fs)]);
-  }, []);
-
-  const startConvert = useCallback(async () => {
-    setStep(4); setLogs([]); setDone(false);
-    const final = []; const seen = new Set();
-    addLog("▶ 啟動名單處理與工號排序程序...", "info");
-
-    for (const file of tFiles) {
-      const wb = await readXlsx(file);
-      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-      const hIdx = data.findIndex(r => r.some(c => String(c).includes("工號")));
-      if (hIdx === -1) { addLog(`❌ 檔案 ${file.name} 找不到「工號」標題`, "err"); continue; }
-
-      const head = data[hIdx];
-      const iID = head.findIndex(c => String(c).includes("工號"));
-
-      for (let r = hIdx + 1; r < data.length; r++) {
-        const id = String(data[r][iID] || "").trim();
-        if (!id || id === "undefined") continue;
-        const staff = sMap[id] || {};
-        for (let c = iID + 1; c < head.length; c++) {
-          const code = String(head[c]).trim();
-          const rCode = String(data[r][c] || "").trim();
-          if (!rCode || rCode === "null") continue;
-          if (seen.has(`${id}_${code}`)) continue;
-          seen.add(`${id}_${code}`);
-          final.push({ Course: code, StaffID: id, Name: staff.name || "", Dept: staff.dept || "", R_Code: rCode });
-        }
-      }
-    }
-
-    final.sort((a, b) => a.StaffID.localeCompare(b.StaffID, undefined, { numeric: true }));
-    addLog(`✅ 處理完成！共轉換 ${final.length} 筆派訓記錄。`, "ok");
-    setResults(final);
-    setDone(true);
-  }, [tFiles, sMap]);
-
-  const LABELS = ["人事資料", "課程資訊", "派訓名單", "產出結果"];
-
-  return (
-    <div style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif", background: C.bg, color: C.text, minHeight: "100vh", padding: "2rem 1rem" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: ".5rem" }}>📋 派訓名單轉換工具 V4.2</h1>
-        <p style={{ fontSize: 14, color: C.text2, marginBottom: "2rem" }}>自動對應部門、工號嚴格排序、動態同步表頭</p>
-
-        {/* 步驟列 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: ".75rem" }}>
-          {[1, 2, 3, 4].map((n, i) => (
-            <>{i > 0 && <StepLine key={`l${n}`} done={step > n} />}<StepDot key={n} n={n} cur={step} /></>
-          ))}
-        </div>
-        <div style={{ display: "flex", marginBottom: "1.5rem" }}>
-          {LABELS.map((lbl, i) => (
-            <span key={i} style={{ flex: 1, fontSize: 12, color: step === i + 1 ? C.blue : step > i + 1 ? C.green : C.text3, fontWeight: step === i + 1 ? 600 : 400, textAlign: i === 0 ? "left" : i === 3 ? "right" : "center" }}>{lbl}</span>
-          ))}
-        </div>
-
-        {/* Step 1 */}
-        {step === 1 && (
-          <>
-            <Panel>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: ".75rem" }}>1. 上傳人事總表</div>
-              <p style={{ fontSize: 13, color: C.text2, marginBottom: "1rem", lineHeight: 1.5 }}>用於自動對應學員姓名與部門別。必須包含「工號」、「姓名」、「部門」欄位。</p>
-              <StatusBar ok={Object.keys(sMap).length > 0}>
-                {Object.keys(sMap).length > 0 ? `✅ 已成功載入 ${Object.keys(sMap).length} 筆人員資料` : "未載入人事資料"}
-              </StatusBar>
-              <DropZone label="點擊或拖曳上傳 .xlsx / .xls / .csv" accept=".xlsx,.xls,.csv" onChange={handleStaff} />
-            </Panel>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <Btn primary onClick={() => setStep(2)}>下一步 →</Btn>
-            </div>
-          </>
-        )}
-
-        {/* Step 2 */}
-        {step === 2 && (
-          <>
-            <Panel>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: ".75rem" }}>2. 上傳課程資訊表</div>
-              <p style={{ fontSize: 13, color: C.text2, marginBottom: "1rem", lineHeight: 1.5 }}>此內容將自動填入簽到表與看板的表頭欄位。必須包含「課程代號」欄位。</p>
-              <StatusBar ok={Object.keys(cMap).length > 0}>
-                {Object.keys(cMap).length > 0 ? `✅ 已成功載入 ${Object.keys(cMap).length} 門課程資訊` : "未載入課程資訊"}
-              </StatusBar>
-              <DropZone label="點擊或拖曳上傳 .xlsx / .xls / .csv" accept=".xlsx,.xls,.csv" onChange={handleCourse} />
-            </Panel>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <Btn onClick={() => setStep(1)}>← 上一步</Btn>
-              <Btn primary onClick={() => setStep(3)}>下一步 →</Btn>
-            </div>
-          </>
-        )}
-
-        {/* Step 3 */}
-        {step === 3 && (
-          <>
-            <Panel>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: ".75rem" }}>3. 上傳派訓名單（學員 A 檔）</div>
-              <p style={{ fontSize: 13, color: C.text2, marginBottom: "1rem", lineHeight: 1.5 }}>可同時選取多個檔案，重複派訓會自動剔除。</p>
-              {tFiles.length > 0 && (
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden", marginBottom: "1rem" }}>
-                  {tFiles.map((f, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < tFiles.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13, background: C.bg3 }}>
-                      <span>📄 {f.name}</span>
-                      <button onClick={() => setTFiles(l => l.filter((_, j) => j !== i))} style={{ border: "none", background: "none", cursor: "pointer", color: C.text3, fontSize: 16 }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <DropZone label="+ 新增多份名單檔案 .xlsx / .xls" accept=".xlsx,.xls" multiple onChange={addFiles} />
-            </Panel>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <Btn onClick={() => setStep(2)}>← 上一步</Btn>
-              <Btn primary disabled={tFiles.length === 0} onClick={startConvert}>執行轉換與同步 ▶</Btn>
-            </div>
-          </>
-        )}
-
-        {/* Step 4 */}
-        {step === 4 && (
-          <>
-            <Panel>
-              <div style={{ background: "#1e1e1e", borderRadius: 6, padding: 15, fontSize: 12, fontFamily: "'SF Mono','Consolas',monospace", color: "#ccc", maxHeight: 200, overflowY: "auto", lineHeight: 1.8 }}>
-                {logs.map((l, i) => (
-                  <div key={i} style={{ color: l.type === "ok" ? "#7ec870" : l.type === "info" ? "#79b8ff" : l.type === "err" ? "#f08080" : "#ccc" }}>{l.msg}</div>
-                ))}
-              </div>
-            </Panel>
-            {done && (
-              <Panel>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: "1.5rem" }}>
-                  <div style={{ background: C.bg2, borderRadius: 6, padding: "1rem", textAlign: "center", border: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 28, fontWeight: 700 }}>{results.length}</div>
-                    <div style={{ fontSize: 11, color: C.text2, marginTop: 4 }}>總處理記錄數</div>
-                  </div>
-                  <div style={{ background: C.bg2, borderRadius: 6, padding: "1rem", textAlign: "center", border: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 28, fontWeight: 700 }}>{new Set(results.map(r => r.Course)).size}</div>
-                    <div style={{ fontSize: 11, color: C.text2, marginTop: 4 }}>課程數量</div>
-                  </div>
-                </div>
-                {[
-                  { label: "📊 Data All 總表（工號排序）", fn: () => downloadDataAll(results, cMap) },
-                  { label: "📝 簽到表合輯（表頭動態同步）", fn: () => downloadSignSheets(results, cMap) },
-                  { label: "📺 課程看板（瀏覽器列印 → PDF）", fn: () => downloadCourseBoard(results, cMap) },
-                ].map((item, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 0", borderBottom: i < 2 ? `1px solid ${C.border}` : "none" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</span>
-                    <Btn primary onClick={item.fn}>下載</Btn>
-                  </div>
-                ))}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2rem" }}>
-                  <Btn onClick={() => { setStep(1); setSMap({}); setCMap({}); setTFiles([]); setLogs([]); setResults([]); setDone(false); }}>重新開始</Btn>
-                </div>
-              </Panel>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
+// ── 工具函式 ──────────────────────────────────────────────────────────────────
+function groupBy(arr, key) {
+  return arr.reduce((acc, obj) => { (acc[obj[key]] = acc[obj[key]]||[]).push(obj); return acc; }, {});
 }
+</script>
+</body>
+</html>
