@@ -97,8 +97,8 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
   <!-- Step 1 -->
   <div id="step1">
     <div class="panel">
-      <div class="ptitle">1. 人事總表</div>
-      <div class="pdesc">用於自動對應學員姓名與部門別。需包含「工號」、「姓名」、「部門」欄位。<br>資料儲存於瀏覽器，下次開啟自動載入；有更新再重新上傳即可覆蓋。</div>
+      <div class="ptitle">1. 人事資料表</div>
+      <div class="pdesc">上傳「查詢Email工具.xlsm」或含工號的人事總表。程式會自動依工號對應姓名、部門、辦公地點（廠區）。<br>資料儲存於瀏覽器，下次開啟自動載入；有更新再重新上傳即可覆蓋。</div>
       <div class="dstatus" id="s1status">未載入人事資料</div>
       <div id="s1cached" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
         <span style="font-size:13px;color:var(--text2)">有更新？重新上傳即可覆蓋：</span>
@@ -321,16 +321,38 @@ function log(m, c) {
 // ── Step 1: 人事總表 ──────────────────────────────────────────────────────────
 async function handleStaff(fs) {
   const file = fs[0];
-  const ab = await file.arrayBuffer();
-  const wb = XLSX.read(ab);
-  const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {raw:false});
+  const ab   = await file.arrayBuffer();
+  const wb   = XLSX.read(ab, {cellFormula:false, raw:false});
   sMap = {};
-  data.forEach(r => {
+
+  // 掃描所有 sheet，優先找有「工號」且有「辦公地點」的 sheet
+  let bestSheet = null, bestData = null;
+  for (const sn of wb.SheetNames) {
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[sn], {raw:false, defval:''});
+    if (data.length === 0) continue;
+    const sample = data[0];
+    const hasID  = fk(sample,'工號','Staff ID','ID');
+    const hasLoc = fk(sample,'辦公地點','Location','廠區','Office');
+    if (hasID && hasLoc) { bestSheet = sn; bestData = data; break; }
+    if (hasID && !bestData) { bestSheet = sn; bestData = data; }
+  }
+
+  if (!bestData) {
+    setStatus('s1status', false, '❌ 找不到含工號的資料，請確認檔案格式'); return;
+  }
+
+  bestData.forEach(r => {
     const id = String(r[fk(r,'工號','Staff ID','ID')]||'').trim();
-    if (id) sMap[id] = { name: r[fk(r,'姓名','Name')], dept: r[fk(r,'部門','Dept','單位')] };
+    if (!id) return;
+    sMap[id] = {
+      name:     String(r[fk(r,'姓名','Name')]||'').trim(),
+      dept:     String(r[fk(r,'部門','Dept','單位')]||'').trim(),
+      location: String(r[fk(r,'辦公地點','Location','廠區','Office')]||'').trim(),
+    };
   });
+
   const now = new Date().toLocaleString('zh-TW');
-  setStatus('s1status', true, `✅ 已載入 ${Object.keys(sMap).length} 筆人員資料（${now}，來源：${file.name}）`);
+  setStatus('s1status', true, `✅ 已載入 ${Object.keys(sMap).length} 筆人員資料（${now}，來源：${file.name}，Sheet：${bestSheet}）`);
   document.getElementById('s1cached').classList.remove('hidden');
   saveCache(LS_STAFF, sMap, file.name);
 }
@@ -413,12 +435,13 @@ async function startConvert() {
 
   for (const file of tFiles) {
     const ab = await file.arrayBuffer();
-    const wb = XLSX.read(ab);
+    // dense:true + cellFormula:false 確保讀到公式計算後的快取值而非公式字串
+    const wb = XLSX.read(ab, {cellFormula:false, cellNF:false, sheetStubs:true});
 
     // 自動掃描所有工作表，找有「工號」標題的那一頁
     let raw = null, sheetName = '';
     for (const sn of wb.SheetNames) {
-      const candidate = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+      const candidate = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:'', raw:false});
       if (candidate.some(r => r.some(c => String(c).includes('工號')))) {
         raw = candidate; sheetName = sn; break;
       }
@@ -426,22 +449,22 @@ async function startConvert() {
     if (!raw) { log(`❌ ${file.name}：所有工作表均找不到「工號」標題列（共 ${wb.SheetNames.length} 頁：${wb.SheetNames.join(', ')}）`, 'err'); continue; }
     log(`　→ 使用工作表：「${sheetName}」`, 'info');
 
-    // 嚴格比對「工號」（完全符合），找不到再退回包含比對
     let hIdx = raw.findIndex(r => r.some(c => String(c).trim() === '工號'));
     if (hIdx === -1) hIdx = raw.findIndex(r => r.some(c => String(c).includes('工號')));
     if (hIdx === -1) { log(`❌ ${file.name}：找不到「工號」標題列`, 'err'); continue; }
 
     const head = raw[hIdx];
     const iID     = head.findIndex(c => String(c).trim() === '工號' || String(c).includes('工號'));
-    // Course 欄：完全符合避免誤抓 "Course Name"
     const iCourse = head.findIndex(c => /^course$/i.test(String(c).trim()) || String(c).trim() === '課程代號');
-    // Name 欄：完全符合避免誤抓 "Course Name"
     const iName   = head.findIndex(c => String(c).trim() === '姓名' || String(c).trim() === 'Name');
     const iDept   = head.findIndex(c => String(c).trim() === '部門' || /^dept$/i.test(String(c).trim()));
-    // Staff Location 欄
     const iLoc    = head.findIndex(c => /staff.?location|上班地點|廠別/i.test(String(c).trim()));
+    // E/Classroom 欄（直接判斷課程類型）
+    const iEC     = head.findIndex(c => /^e\/classroom$|^e.classroom$/i.test(String(c).trim()));
+    // Attendance 欄（欄名可能含換行）
+    const iAtt    = head.findIndex(c => /attendance|梯次|attend/i.test(String(c)));
 
-    log(`　→ 標題列:${hIdx+1} | 工號欄:${iID} | Course欄:${iCourse} | 姓名欄:${iName} | 部門欄:${iDept} | 地點欄:${iLoc}`, 'info');
+    log(`　→ 標題列:${hIdx+1} | 工號:${iID} | Course:${iCourse} | Name:${iName} | Dept:${iDept} | Loc:${iLoc} | E/C:${iEC} | Att:${iAtt}`, 'info');
 
     // ── 判斷格式 ──
     // 直式（每行一筆）：有 Course 欄 → 直接讀每行
@@ -453,22 +476,25 @@ async function startConvert() {
       const id = String(row[iID]||'').trim();
       if (!id || id === 'undefined') continue;
 
-      // 優先用人事總表補齊姓名/部門，若無則從本檔讀取
+      // 優先用人事資料表補齊姓名/部門/辦公地點，若無則從派訓名單讀取
       const staffRef = sMap[id] || {};
-      const name = staffRef.name || (iName !== -1 ? String(row[iName]||'').trim() : '');
-      const dept = staffRef.dept || (iDept !== -1 ? String(row[iDept]||'').trim() : '');
+      const name = staffRef.name     || (iName !== -1 ? String(row[iName]||'').trim() : '');
+      const dept = staffRef.dept     || (iDept !== -1 ? String(row[iDept]||'').trim() : '');
 
       if (isVertical) {
         // 直式：每行一筆派訓記錄
         const code = String(row[iCourse]||'').trim();
         if (!code) continue;
-        // 嘗試讀梯次（Attendance 欄或最後一欄）
-        const iAtt = head.findIndex(c => /attendance|梯次|attend/i.test(String(c)));
-        const rCode = iAtt !== -1 ? String(row[iAtt]||'').trim() : '1';
+        // R_Code：優先用 E/Classroom 欄，找不到用 Attendance 欄
+        let rCode = '1';
+        if (iEC !== -1) rCode = String(row[iEC]||'').trim();
+        else if (iAtt !== -1) rCode = String(row[iAtt]||'').trim();
         const key = `${id}_${code}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const loc = iLoc !== -1 ? String(row[iLoc]||'').trim() : '';
+        // 辦公地點：優先用人事資料表，次用派訓名單的 Staff Location 欄
+        const staffRef2 = sMap[id] || {};
+        const loc = staffRef2.location || (iLoc !== -1 ? String(row[iLoc]||'').trim() : '');
         finalResults.push({ Course:code, StaffID:id, Name:name, Dept:dept, R_Code:rCode, StaffLocation:loc });
       } else {
         // 橫式：工號右側各欄為課程代號
@@ -479,7 +505,8 @@ async function startConvert() {
           const key = `${id}_${code}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          const loc = iLoc !== -1 ? String(row[iLoc]||'').trim() : '';
+          const staffRef3 = sMap[id] || {};
+          const loc = staffRef3.location || (iLoc !== -1 ? String(row[iLoc]||'').trim() : '');
           finalResults.push({ Course:code, StaffID:id, Name:name, Dept:dept, R_Code:rCode, StaffLocation:loc });
         }
       }
@@ -993,12 +1020,10 @@ function downloadCourseBoard() {
         for (let ci=3; ci<=15; ci++) sv(r,ci,'');
       }
 
-      // 人數總計：保留 Row15 O欄的 SUM 公式，只填標籤
+      // 人數總計
       sv(15, 1, '人數總計');
-      // 直接把 total 寫入 O15，同時保留 cell 的 t 為數字
-      const o15addr = XLSX.utils.encode_cell({r:14, c:14}); // Row15, col O
-      const o15s    = tmplSheet2[o15addr] ? tmplSheet2[o15addr].s : undefined;
-      ws[o15addr] = {v:total, w:String(total), t:'n', ...(o15s!==undefined && {s:o15s})};
+      const o15addr = XLSX.utils.encode_cell({r:14, c:14}); // Row15, col O (s=14 from XF table)
+      ws[o15addr] = {v:total, w:String(total), t:'n', s:14};
       sv(17, 1, '瑞昱人資');
       sv(18, 1, '教育訓練與文化活動單位');
       sv(19, 1, `本課程規劃暨執行負責人：${c.responsible||''}`);
