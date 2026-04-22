@@ -83,9 +83,13 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
   <!-- Step 1 -->
   <div id="step1">
     <div class="panel">
-      <div class="ptitle">1. 上傳人事總表</div>
-      <div class="pdesc">用於自動對應學員姓名與部門別。需包含「工號」、「姓名」、「部門」欄位。</div>
+      <div class="ptitle">1. 人事總表</div>
+      <div class="pdesc">用於自動對應學員姓名與部門別。需包含「工號」、「姓名」、「部門」欄位。<br>資料儲存於瀏覽器，下次開啟自動載入；有更新再重新上傳即可覆蓋。</div>
       <div class="dstatus" id="s1status">未載入人事資料</div>
+      <div id="s1cached" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <span style="font-size:13px;color:var(--text2)">有更新？重新上傳即可覆蓋：</span>
+        <button class="btn" style="font-size:12px;padding:6px 14px;color:#a32d2d;border-color:#a32d2d" onclick="clearCache('staff')">清除快取</button>
+      </div>
       <label class="dropzone" id="dz1">
         <input type="file" accept=".xlsx,.xls,.csv" onchange="handleStaff(this.files)">
         <span>點擊或拖曳上傳 .xlsx / .xls / .csv</span>
@@ -97,9 +101,13 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
   <!-- Step 2 -->
   <div id="step2" class="hidden">
     <div class="panel">
-      <div class="ptitle">2. 上傳課程資訊表</div>
-      <div class="pdesc">此內容將自動填入簽到表與看板的表頭欄位。需包含「課程代號」欄位。</div>
+      <div class="ptitle">2. 課程資訊表</div>
+      <div class="pdesc">此內容將自動填入簽到表與看板的表頭欄位。需包含「課程代號」欄位。<br>資料儲存於瀏覽器，下次開啟自動載入；有更新再重新上傳即可覆蓋。</div>
       <div class="dstatus" id="s2status">未載入課程資訊</div>
+      <div id="s2cached" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <span style="font-size:13px;color:var(--text2)">有更新？重新上傳即可覆蓋：</span>
+        <button class="btn" style="font-size:12px;padding:6px 14px;color:#a32d2d;border-color:#a32d2d" onclick="clearCache('course')">清除快取</button>
+      </div>
       <label class="dropzone" id="dz2">
         <input type="file" accept=".xlsx,.xls,.csv" onchange="handleCourse(this.files)">
         <span>點擊或拖曳上傳 .xlsx / .xls / .csv</span>
@@ -145,6 +153,58 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
 
 <script>
 let sMap = {}, cMap = {}, tFiles = [], finalResults = [];
+
+// ── localStorage 快取 ─────────────────────────────────────────────────────────
+const LS_STAFF  = 'pxTraining_staff_v1';
+const LS_COURSE = 'pxTraining_course_v1';
+
+function saveCache(key, map, fileName) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ map, fileName, savedAt: new Date().toLocaleString('zh-TW') }));
+  } catch(e) {
+    console.warn('localStorage 儲存失敗（資料可能過大）', e);
+  }
+}
+
+function loadCache(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+}
+
+function clearCache(type) {
+  if (type === 'staff') {
+    localStorage.removeItem(LS_STAFF);
+    sMap = {};
+    setStatus('s1status', false, '未載入人事資料');
+    document.getElementById('s1cached').classList.add('hidden');
+  } else {
+    localStorage.removeItem(LS_COURSE);
+    cMap = {};
+    setStatus('s2status', false, '未載入課程資訊');
+    document.getElementById('s2cached').classList.add('hidden');
+  }
+}
+
+function setStatus(id, ok, text) {
+  const el = document.getElementById(id);
+  el.className = 'dstatus' + (ok ? ' ok' : '');
+  el.textContent = text;
+}
+
+// ── 頁面初始化：從快取還原 ────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const sc = loadCache(LS_STAFF);
+  if (sc && sc.map && Object.keys(sc.map).length > 0) {
+    sMap = sc.map;
+    setStatus('s1status', true, `✅ 已從快取載入 ${Object.keys(sMap).length} 筆人員資料（${sc.savedAt}，來源：${sc.fileName}）`);
+    document.getElementById('s1cached').classList.remove('hidden');
+  }
+  const cc = loadCache(LS_COURSE);
+  if (cc && cc.map && Object.keys(cc.map).length > 0) {
+    cMap = cc.map;
+    setStatus('s2status', true, `✅ 已從快取載入 ${Object.keys(cMap).length} 門課程資訊（${cc.savedAt}，來源：${cc.fileName}）`);
+    document.getElementById('s2cached').classList.remove('hidden');
+  }
+});
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
 function fk(row, ...targets) {
@@ -195,7 +255,8 @@ function log(m, c) {
 
 // ── Step 1: 人事總表 ──────────────────────────────────────────────────────────
 async function handleStaff(fs) {
-  const ab = await fs[0].arrayBuffer();
+  const file = fs[0];
+  const ab = await file.arrayBuffer();
   const wb = XLSX.read(ab);
   const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {raw:false});
   sMap = {};
@@ -203,14 +264,16 @@ async function handleStaff(fs) {
     const id = String(r[fk(r,'工號','Staff ID','ID')]||'').trim();
     if (id) sMap[id] = { name: r[fk(r,'姓名','Name')], dept: r[fk(r,'部門','Dept','單位')] };
   });
-  const el = document.getElementById('s1status');
-  el.className = 'dstatus ok';
-  el.textContent = `✅ 已成功載入 ${Object.keys(sMap).length} 筆人員資料`;
+  const now = new Date().toLocaleString('zh-TW');
+  setStatus('s1status', true, `✅ 已載入 ${Object.keys(sMap).length} 筆人員資料（${now}，來源：${file.name}）`);
+  document.getElementById('s1cached').classList.remove('hidden');
+  saveCache(LS_STAFF, sMap, file.name);
 }
 
 // ── Step 2: 課程資訊 ──────────────────────────────────────────────────────────
 async function handleCourse(fs) {
-  const ab = await fs[0].arrayBuffer();
+  const file = fs[0];
+  const ab = await file.arrayBuffer();
   const wb = XLSX.read(ab);
   const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {raw:false});
   cMap = {};
@@ -224,9 +287,10 @@ async function handleCourse(fs) {
       lecturer: r[fk(r,'講師','Lecturer')]     || '',
     };
   });
-  const el = document.getElementById('s2status');
-  el.className = 'dstatus ok';
-  el.textContent = `✅ 已成功載入 ${Object.keys(cMap).length} 門課程資訊`;
+  const now = new Date().toLocaleString('zh-TW');
+  setStatus('s2status', true, `✅ 已載入 ${Object.keys(cMap).length} 門課程資訊（${now}，來源：${file.name}）`);
+  document.getElementById('s2cached').classList.remove('hidden');
+  saveCache(LS_COURSE, cMap, file.name);
 }
 
 // ── Step 3: 派訓名單檔案 ──────────────────────────────────────────────────────
@@ -260,27 +324,56 @@ async function startConvert() {
   for (const file of tFiles) {
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab);
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
-    const hIdx = data.findIndex(r => r.some(c => String(c).includes('工號')));
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+    const hIdx = raw.findIndex(r => r.some(c => String(c).includes('工號')));
     if (hIdx === -1) { log(`❌ ${file.name}：找不到「工號」標題列`, 'err'); continue; }
 
-    const head = data[hIdx];
-    const iID = head.findIndex(c => String(c).includes('工號'));
+    const head = raw[hIdx];
+    const iID     = head.findIndex(c => String(c).includes('工號'));
+    const iCourse = head.findIndex(c => /^course$/i.test(String(c).trim()) || String(c).trim() === '課程代號');
+    const iName   = head.findIndex(c => String(c).includes('姓名') || /^name$/i.test(String(c).trim()));
+    const iDept   = head.findIndex(c => String(c).includes('部門') || /^dept$/i.test(String(c).trim()));
 
-    for (let r = hIdx+1; r < data.length; r++) {
-      const id = String(data[r][iID]||'').trim();
+    // ── 判斷格式 ──
+    // 直式（每行一筆）：有 Course 欄 → 直接讀每行
+    // 橫式（每人一行，課程橫向展開）：沒有 Course 欄
+    const isVertical = iCourse !== -1;
+
+    for (let r = hIdx+1; r < raw.length; r++) {
+      const row = raw[r];
+      const id = String(row[iID]||'').trim();
       if (!id || id === 'undefined') continue;
-      const staff = sMap[id] || {};
-      for (let c = iID+1; c < head.length; c++) {
-        const code  = String(head[c]).trim();
-        const rCode = String(data[r][c]||'').trim();
-        if (!rCode || rCode === 'null') continue;
-        if (seen.has(`${id}_${code}`)) continue;
-        seen.add(`${id}_${code}`);
-        finalResults.push({ Course:code, StaffID:id, Name:staff.name||'', Dept:staff.dept||'', R_Code:rCode });
+
+      // 優先用人事總表補齊姓名/部門，若無則從本檔讀取
+      const staffRef = sMap[id] || {};
+      const name = staffRef.name || (iName !== -1 ? String(row[iName]||'').trim() : '');
+      const dept = staffRef.dept || (iDept !== -1 ? String(row[iDept]||'').trim() : '');
+
+      if (isVertical) {
+        // 直式：每行一筆派訓記錄
+        const code = String(row[iCourse]||'').trim();
+        if (!code) continue;
+        // 嘗試讀梯次（Attendance 欄或最後一欄）
+        const iAtt = head.findIndex(c => /attendance|梯次|attend/i.test(String(c)));
+        const rCode = iAtt !== -1 ? String(row[iAtt]||'').trim() : '1';
+        const key = `${id}_${code}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        finalResults.push({ Course:code, StaffID:id, Name:name, Dept:dept, R_Code:rCode });
+      } else {
+        // 橫式：工號右側各欄為課程代號
+        for (let c = iID+1; c < head.length; c++) {
+          const code  = String(head[c]).trim();
+          const rCode = String(row[c]||'').trim();
+          if (!rCode || rCode === 'null') continue;
+          const key = `${id}_${code}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          finalResults.push({ Course:code, StaffID:id, Name:name, Dept:dept, R_Code:rCode });
+        }
       }
     }
-    log(`✔ 處理完成：${file.name}`, 'ok');
+    log(`✔ 處理完成：${file.name}（${isVertical ? '直式' : '橫式'}格式）`, 'ok');
   }
 
   finalResults.sort((a,b) => a.StaffID.localeCompare(b.StaffID, undefined, {numeric:true}));
