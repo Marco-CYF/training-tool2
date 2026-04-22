@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>派訓名單轉換工具 V4.2 - 表頭同步與嚴格排序版</title>
+<title>派訓名單轉換工具 V4.2 - 專業規格版</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -18,42 +18,49 @@
 }
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif;background:var(--bg3);color:var(--text);min-height:100vh;padding:2rem 1rem}
 .wrap{max-width:720px;margin:0 auto}
-h1{font-size:20px;font-weight:600;margin-bottom:.25rem}
-.sub{font-size:13px;color:var(--text2);margin-bottom:2rem}
+h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
+.sub{font-size:14px;color:var(--text2);margin-bottom:2rem}
 .steps{display:flex;align-items:center;margin-bottom:.75rem}
-.sdot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;border:1.5px solid var(--border2);background:var(--bg2);color:var(--text2)}
+.sdot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;border:1.5px solid var(--border2);background:var(--bg2);color:var(--text2)}
 .sdot.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .sdot.done{background:var(--green);color:#fff;border-color:var(--green)}
-.sline{flex:1;height:1px;background:var(--border)}
+.sline{flex:1;height:2px;background:var(--border)}
 .sline.done{background:var(--green)}
 .slabels{display:flex;margin-bottom:1.5rem}
-.slabel{flex:1;font-size:11px;color:var(--text3)}
+.slabel{flex:1;font-size:12px;color:var(--text3);text-align:center}
+.slabel:first-child{text-align:left}.slabel:last-child{text-align:right}
 .slabel.active{color:var(--blue);font-weight:600}.slabel.done{color:var(--green)}
-.panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.ptitle{font-size:15px;font-weight:600;margin-bottom:.5rem}
-.dstatus{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--rs);border:1px solid var(--border);margin-bottom:.75rem;font-size:13px;background:var(--bg2)}
-.dstatus.ok{background:var(--green-bg);border-color:var(--green-bd)}
-.dropzone{display:block;width:100%;border:1.5px dashed var(--border2);border-radius:var(--rs);padding:1.5rem;text-align:center;cursor:pointer;background:var(--bg2);position:relative}
-.dropzone input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-.flist{border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;margin-bottom:.75rem}
-.frow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;background:var(--bg)}
-.brow{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
-.btn{font-size:13px;font-weight:600;padding:8px 18px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--bg);font-family:inherit}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.ptitle{font-size:16px;font-weight:600;margin-bottom:.75rem;color:var(--text)}
+.pdesc{font-size:13px;color:var(--text2);margin-bottom:1rem;line-height:1.5}
+.dstatus{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--rs);border:1px solid var(--border);margin-bottom:1rem;font-size:13px;background:var(--bg2)}
+.dstatus.ok{background:var(--green-bg);border-color:var(--green-bd);color:var(--green)}
+.dropzone{display:block;width:100%;border:2px dashed var(--border2);border-radius:var(--rs);padding:2rem;text-align:center;cursor:pointer;background:var(--bg2);transition:all .2s;position:relative}
+.dropzone:hover{border-color:var(--blue);background:var(--blue-bg)}
+.dropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.flist{border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;margin-bottom:1rem}
+.frow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;background:var(--bg)}
+.frow:last-child{border-bottom:none}
+.brow{display:flex;gap:10px;justify-content:flex-end;margin-top:1.5rem}
+.btn{font-size:14px;font-weight:600;padding:10px 22px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--bg);color:var(--text);transition:all .15s}
+.btn:hover{background:var(--bg2)}
 .btn.p{background:var(--blue);color:#fff;border-color:var(--blue)}
-.log{background:#1e1e1e;border-radius:var(--rs);padding:12px 14px;font-size:12px;font-family:'SF Mono',monospace;color:#ccc;max-height:180px;overflow-y:auto;line-height:1.8}
-.log .ok{color:#7ec870}.log .info{color:#79b8ff}
-.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:1rem}
-.scard{background:var(--bg2);border-radius:var(--rs);padding:.85rem .5rem;text-align:center}
-.snum{font-size:22px;font-weight:700}.slbl2{font-size:10px;color:var(--text2);margin-top:3px}
-.dl-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
-.dl-name{font-size:13px;font-weight:600}
+.btn.p:hover{background:#0d4d8a}
+.log{background:#1e1e1e;border-radius:var(--rs);padding:15px;font-size:12px;font-family:'SF Mono','Consolas',monospace;color:#ccc;max-height:200px;overflow-y:auto;line-height:1.8}
+.log .ok{color:#7ec870}.log .info{color:#79b8ff}.log .err{color:#f08080}
+.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:1.5rem}
+.scard{background:var(--bg2);border-radius:var(--rs);padding:1rem;text-align:center;border:1px solid var(--border)}
+.snum{font-size:24px;font-weight:700;color:var(--text)}
+.slbl2{font-size:11px;color:var(--text2);margin-top:4px}
+.dl-item{display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid var(--border)}
+.dl-name{font-size:14px;font-weight:600}
 .hidden{display:none!important}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>📋 派訓名單轉換工具 V4.2</h1>
-  <p class="sub">依課程資訊動態更新表頭內容，並嚴格執行工號排序</p>
+  <p class="sub">自動對應部門、工號嚴格排序、動態同步表頭</p>
 
   <div class="steps">
     <div class="sdot active" id="dot1">1</div><div class="sline" id="line1"></div>
@@ -65,11 +72,225 @@ h1{font-size:20px;font-weight:600;margin-bottom:.25rem}
     <span class="slabel active" id="lbl1">人事資料</span>
     <span class="slabel" id="lbl2">課程資訊</span>
     <span class="slabel" id="lbl3">派訓名單</span>
-    <span class="slabel" id="lbl4">產出結果</span>
+    <span class="slabel" id="lbl4">規格產出</span>
   </div>
 
   <div id="step1">
     <div class="panel">
-      <div class="ptitle">步驟 1：人事總表 (對應部門)</div>
-      <div class="dstatus" id="s1status">未載入</div>
+      <div class="ptitle">1. 上傳人事總表</div>
+      <div class="pdesc">用於自動對應學員姓名與部門別。</div>
+      <div class="dstatus" id="s1status">未載入人事資料</div>
       <label class="dropzone">
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleStaff(this.files)">
+        <div>點擊或拖曳上傳</div>
+      </label>
+    </div>
+    <div class="brow"><button class="btn p" onclick="goStep(2)">下一步 →</button></div>
+  </div>
+
+  <div id="step2" class="hidden">
+    <div class="panel">
+      <div class="ptitle">2. 上傳課程資訊表</div>
+      <div class="pdesc">此內容將自動填入簽到表與看板的表頭欄位。</div>
+      <div class="dstatus" id="s2status">未載入課程資訊</div>
+      <label class="dropzone">
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleCourse(this.files)">
+        <div>點擊或拖曳上傳</div>
+      </label>
+    </div>
+    <div class="brow"><button class="btn" onclick="goStep(1)">← 上一步</button><button class="btn p" onclick="goStep(3)">下一步 →</button></div>
+  </div>
+
+  <div id="step3" class="hidden">
+    <div class="panel">
+      <div class="ptitle">3. 上傳派訓名單 (學員 A 檔)</div>
+      <div class="pdesc">可同時選取多個檔案，重複派訓會自動剔除。</div>
+      <div class="flist" id="flist"></div>
+      <label class="dropzone">
+        <input type="file" accept=".xlsx,.xls" multiple onchange="addFiles(this.files)">
+        <div>+ 新增多份名單檔案</div>
+      </label>
+    </div>
+    <div class="brow"><button class="btn" onclick="goStep(2)">← 上一步</button><button class="btn p" onclick="startConvert()">執行轉換與同步 ▶</button></div>
+  </div>
+
+  <div id="step4" class="hidden">
+    <div class="panel"><div class="log" id="logArea"></div></div>
+    <div id="resultPanel" class="hidden">
+      <div class="panel">
+        <div class="sgrid" id="sgrid"></div>
+        <div class="dl-item"><span class="dl-name">📊 Data All 總表 (工號排序)</span><button class="btn p" id="btnDL_All">下載 Excel</button></div>
+        <div class="dl-item"><span class="dl-name">📝 簽到表合輯 (表頭動態同步)</span><button class="btn p" id="btnDL_Sign">下載 Excel</button></div>
+        <div class="dl-item"><span class="dl-name">📺 課程看板 (PDF 規格版)</span><button class="btn p" id="btnDL_Board">下載 PDF</button></div>
+        <div class="brow" style="margin-top:2rem"><button class="btn" onclick="location.reload()">重新開始</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let sMap={}, cMap={}, tFiles=[], finalResults=[];
+
+// 輔助函式：模糊匹配欄位名稱
+function fk(row, ...targets){
+  const keys = Object.keys(row);
+  return keys.find(k => targets.some(t => String(k).trim().toLowerCase().includes(t.toLowerCase())));
+}
+
+// 處理人事資料 (Step 1)
+async function handleStaff(fs){
+  const f=fs[0]; const ab=await f.arrayBuffer();
+  const wb=XLSX.read(ab); const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{raw:false});
+  sMap={}; 
+  data.forEach(r=>{
+    const id=String(r[fk(r,'工號','Staff ID','ID')]||'').trim();
+    if(id) sMap[id]={ name:r[fk(r,'姓名','Name')], dept:r[fk(r,'部門','Dept','單位')] };
+  });
+  document.getElementById('s1status').className='dstatus ok';
+  document.getElementById('s1status').innerHTML='✅ 已成功載入 '+Object.keys(sMap).length+' 筆人員資料';
+}
+
+// 處理課程資訊 (Step 2)
+async function handleCourse(fs){
+  const f=fs[0]; const ab=await f.arrayBuffer();
+  const wb=XLSX.read(ab); const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{raw:false});
+  cMap={}; 
+  data.forEach(r=>{
+    const id=String(r[fk(r,'課程代號','Course','代號')]||'').trim();
+    if(id) cMap[id]={ 
+      name: r[fk(r,'課程名稱','Name')] || '', 
+      date: r[fk(r,'日期','Date')] || '', 
+      time: r[fk(r,'時間','Time')] || '', 
+      dur:  r[fk(r,'時數','Duration')] || '',
+      lecturer: r[fk(r,'講師','Lecturer')] || ''
+    };
+  });
+  document.getElementById('s2status').className='dstatus ok';
+  document.getElementById('s2status').innerHTML='✅ 已成功載入 '+Object.keys(cMap).length+' 門課程資訊';
+}
+
+function addFiles(fs){ Array.from(fs).forEach(f=>tFiles.push({id:Date.now()+Math.random(), file:f, name:f.name})); renderList(); }
+function renderList(){
+  const l=document.getElementById('flist');
+  l.innerHTML=tFiles.length?tFiles.map(f=>`<div class="frow">📄 ${f.name}</div>`).join(''):'';
+}
+
+function goStep(n){ [1,2,3,4].forEach(i=>document.getElementById('step'+i).classList.toggle('hidden',i!==n)); }
+function log(m,c){ document.getElementById('logArea').innerHTML+=`<div class="${c||''}">${m}</div>`; }
+
+// 核心轉換邏輯 (Step 3 to 4)
+async function startConvert(){
+  goStep(4); finalResults=[]; let seen=new Set();
+  log('▶ 啟動名單處理與工號排序程序...','info');
+
+  for(const tf of tFiles){
+    const ab = await tf.file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+    const hIdx = data.findIndex(r => r.some(c => String(c).includes('工號')));
+    if(hIdx===-1) { log(`❌ 檔案 ${tf.name} 格式不符，找不到「工號」標題。`,'err'); continue; }
+    
+    const head=data[hIdx]; const iID=head.findIndex(c=>String(c).includes('工號'));
+    
+    for(let r=hIdx+1; r<data.length; r++){
+      const id=String(data[r][iID]||'').trim(); if(!id || id==='undefined') continue;
+      const staff=sMap[id]||{};
+      for(let c=iID+1; c<head.length; c++){
+        const code=String(head[c]).trim(); const rCode=String(data[r][c]||'').trim();
+        if(!rCode || rCode==='null' || rCode==='') continue;
+        if(seen.has(`${id}_${code}`)) continue;
+        seen.add(`${id}_${code}`);
+        finalResults.push({
+          Course:code, StaffID:id, Name:staff.name||'', Dept:staff.dept||'', R_Code:rCode
+        });
+      }
+    }
+  }
+
+  // 強制執行工號數值排序
+  finalResults.sort((a, b) => a.StaffID.localeCompare(b.StaffID, undefined, {numeric: true}));
+
+  log(`✅ 處理完成！共轉換 ${finalResults.length} 筆派訓記錄。`,'ok');
+  document.getElementById('sgrid').innerHTML=`<div class="scard"><div class="snum">${finalResults.length}</div><div class="slbl2">總處理記錄數</div></div>`;
+  document.getElementById('resultPanel').classList.remove('hidden');
+  
+  document.getElementById('btnDL_All').onclick = downloadDataAll;
+  document.getElementById('btnDL_Sign').onclick = downloadSignSheets;
+  document.getElementById('btnDL_Board').onclick = downloadCourseBoard;
+}
+
+// 產出 1: Data All
+function downloadDataAll(){
+  const out = finalResults.map(r => {
+    const c = cMap[r.Course] || {};
+    return {
+      '課程代號': r.Course, '課程名稱': c.name, '日期': c.date, '工號': r.StaffID, '姓名': r.Name, '部門': r.Dept, '梯次': r.R_Code
+    };
+  });
+  const ws=XLSX.utils.json_to_sheet(out);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"DataAll");
+  XLSX.writeFile(wb, `Converted_DataAll.xlsx`);
+}
+
+// 產出 2: 分課程簽到表 (動態表頭)
+function downloadSignSheets(){
+  const wb=XLSX.utils.book_new();
+  const groups = finalResults.reduce((acc, obj) => {
+    (acc[obj.Course] = acc[obj.Course] || []).push(obj); return acc;
+  }, {});
+
+  Object.keys(groups).forEach(code => {
+    const list = groups[code]; 
+    const c = cMap[code] || {}; 
+    const wsData = [
+      ["課 程 簽 到 表 (按工號排序)"],
+      ["課程代號", code, "課程名稱", c.name || "N/A"],
+      ["上課日期", c.date || "", "上課時間", c.time || ""],
+      ["上課講師", c.lecturer || "", "課程時數", c.dur || ""],
+      [],
+      ["序號", "學員工號", "姓名", "部門", "簽到欄 (Signature)", "備註"]
+    ];
+    list.forEach((s, i) => wsData.push([i+1, s.StaffID, s.Name, s.Dept, "", ""]));
+    
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [{wch:6},{wch:15},{wch:15},{wch:22},{wch:30},{wch:15}];
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+    XLSX.utils.book_append_sheet(wb, ws, code.substring(0,30));
+  });
+  XLSX.writeFile(wb, `簽到表合輯.xlsx`);
+}
+
+// 產出 3: 課程看板 PDF
+function downloadCourseBoard(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('l', 'mm', 'a4');
+  const groups = finalResults.reduce((acc, obj) => {
+    (acc[obj.Course] = acc[obj.Course] || []).push(obj); return acc;
+  }, {});
+
+  Object.keys(groups).forEach((code, i) => {
+    if(i > 0) doc.addPage('l', 'mm', 'a4');
+    const c = cMap[code] || {};
+    doc.setLineWidth(1.5);
+    doc.rect(10, 10, 277, 190); 
+    
+    doc.setFontSize(44);
+    doc.text("學 員 派 訓 看 板", 148, 45, {align:'center'});
+    doc.line(40, 55, 256, 55);
+
+    doc.setFontSize(26);
+    doc.text(`課程名稱：${c.name || code}`, 30, 85);
+    doc.text(`課程代號：${code}`, 30, 102);
+    doc.text(`上課日期：${c.date || ""}`, 30, 119);
+    doc.text(`上課時間：${c.time || ""}`, 30, 136);
+    doc.text(`上課講師：${c.lecturer || ""}`, 30, 153);
+    doc.text(`預計人數：${groups[code].length} 名`, 30, 170);
+    
+    doc.setFontSize(14);
+    doc.text("※ 請依工號序號完成簽名及報到作業", 148, 192, {align:'center'});
+  });
+  doc.save(`Course_Display_Board.pdf`);
+}
+</script>
+</body>
+</html>
