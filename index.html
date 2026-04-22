@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>派訓名單轉換工具 V4.2</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+window.addEventListener('load', function() {
+  if (typeof XLSX === 'undefined') {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = function(){ console.log('SheetJS 備援 CDN 載入成功'); };
+    s.onerror = function(){ alert('試算表函式庫載入失敗，請確認網路連線後重新整理頁面'); };
+    document.head.appendChild(s);
+  }
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -142,9 +153,18 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
     <div id="resultPanel" class="hidden">
       <div class="panel">
         <div class="sgrid" id="sgrid"></div>
+        <!-- 課程選擇器 -->
+        <div style="margin-bottom:1.25rem">
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:.5rem">選擇課程（單選或全選）</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
+            <button class="btn" style="font-size:12px;padding:5px 12px" onclick="selectAllCourses(true)">全選</button>
+            <button class="btn" style="font-size:12px;padding:5px 12px" onclick="selectAllCourses(false)">全不選</button>
+          </div>
+          <div id="courseCheckboxes" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--rs);padding:10px;background:var(--bg2)"></div>
+        </div>
         <div class="dl-item"><span class="dl-name">📊 Data All 總表（工號排序）</span><button class="btn p" id="btnAll">下載 Excel</button></div>
-        <div class="dl-item"><span class="dl-name">📝 簽到表合輯（表頭動態同步）</span><button class="btn p" id="btnSign">下載 Excel</button></div>
-        <div class="dl-item"><span class="dl-name">📺 課程看板（列印為 PDF）</span><button class="btn p" id="btnBoard">開啟列印</button></div>
+        <div class="dl-item"><span class="dl-name">📝 簽到表（已選課程）</span><button class="btn p" id="btnSign">下載 Excel</button></div>
+        <div class="dl-item"><span class="dl-name">📺 課程看板（已選課程）</span><button class="btn p" id="btnBoard">開啟列印</button></div>
         <div class="brow" style="margin-top:2rem"><button class="btn" onclick="location.reload()">重新開始</button></div>
       </div>
     </div>
@@ -324,14 +344,17 @@ async function startConvert() {
   for (const file of tFiles) {
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab);
-    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
 
-    // debug：顯示前 3 列讓使用者確認讀取內容
-    log(`📄 ${file.name} 前三列：`, 'info');
-    raw.slice(0,3).forEach((r,i) => {
-      const preview = r.map(c=>String(c||'').substring(0,10)).filter(Boolean).join(' | ');
-      log(`　列${i+1}：${preview}`, 'info');
-    });
+    // 自動掃描所有工作表，找有「工號」標題的那一頁
+    let raw = null, sheetName = '';
+    for (const sn of wb.SheetNames) {
+      const candidate = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+      if (candidate.some(r => r.some(c => String(c).includes('工號')))) {
+        raw = candidate; sheetName = sn; break;
+      }
+    }
+    if (!raw) { log(`❌ ${file.name}：所有工作表均找不到「工號」標題列（共 ${wb.SheetNames.length} 頁：${wb.SheetNames.join(', ')}）`, 'err'); continue; }
+    log(`　→ 使用工作表：「${sheetName}」`, 'info');
 
     // 嚴格比對「工號」（完全符合），找不到再退回包含比對
     let hIdx = raw.findIndex(r => r.some(c => String(c).trim() === '工號'));
@@ -393,15 +416,34 @@ async function startConvert() {
   finalResults.sort((a,b) => a.StaffID.localeCompare(b.StaffID, undefined, {numeric:true}));
   log(`✅ 全部完成！共 ${finalResults.length} 筆派訓記錄`, 'ok');
 
-  const courses = new Set(finalResults.map(r => r.Course)).size;
+  const courseList = [...new Set(finalResults.map(r => r.Course))];
   document.getElementById('sgrid').innerHTML = `
     <div class="scard"><div class="snum">${finalResults.length}</div><div class="slbl2">總記錄數</div></div>
-    <div class="scard"><div class="snum">${courses}</div><div class="slbl2">課程數量</div></div>`;
-  document.getElementById('resultPanel').classList.remove('hidden');
+    <div class="scard"><div class="snum">${courseList.length}</div><div class="slbl2">課程數量</div></div>`;
 
+  // 建立課程 checkbox 列表
+  const cbContainer = document.getElementById('courseCheckboxes');
+  cbContainer.innerHTML = courseList.map(code => {
+    const c = cMap[code] || {};
+    const label = c.name ? `${code}　${c.name}` : code;
+    return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" class="course-cb" value="${code}" checked style="width:15px;height:15px;cursor:pointer">
+      <span>${label}　<span style="color:var(--text3);font-size:12px">${c.date||''} ${c.time||''}</span></span>
+    </label>`;
+  }).join('');
+
+  document.getElementById('resultPanel').classList.remove('hidden');
   document.getElementById('btnAll').onclick   = downloadDataAll;
   document.getElementById('btnSign').onclick  = downloadSignSheets;
   document.getElementById('btnBoard').onclick = downloadCourseBoard;
+}
+
+function getSelectedCourses() {
+  return [...document.querySelectorAll('.course-cb:checked')].map(cb => cb.value);
+}
+
+function selectAllCourses(val) {
+  document.querySelectorAll('.course-cb').forEach(cb => cb.checked = val);
 }
 
 // ── 產出 1: Data All ──────────────────────────────────────────────────────────
@@ -418,65 +460,82 @@ function downloadDataAll() {
 
 // ── 產出 2: 簽到表 ────────────────────────────────────────────────────────────
 function downloadSignSheets() {
-  const wb = XLSX.utils.book_new();
-  const groups = groupBy(finalResults, 'Course');
-  Object.keys(groups).forEach(code => {
-    const list = groups[code]; const c = cMap[code] || {};
-    const wsData = [
-      ['課 程 簽 到 表（按工號排序）'],
-      ['課程代號', code, '課程名稱', c.name||'N/A'],
-      ['上課日期', c.date||'', '上課時間', c.time||''],
-      ['上課講師', c.lecturer||'', '課程時數', c.dur||''],
-      [],
-      ['序號','學員工號','姓名','部門','簽到欄 (Signature)','備註']
-    ];
-    list.forEach((s,i) => wsData.push([i+1, s.StaffID, s.Name, s.Dept, '', '']));
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [{wch:6},{wch:15},{wch:15},{wch:22},{wch:30},{wch:15}];
-    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
-    XLSX.utils.book_append_sheet(wb, ws, code.substring(0,30));
-  });
-  XLSX.writeFile(wb, '簽到表合輯.xlsx');
+  try {
+    if (typeof XLSX === 'undefined') { alert('試算表函式庫尚未載入，請重新整理頁面後再試'); return; }
+    const selected = getSelectedCourses();
+    if (selected.length === 0) { alert('請至少選擇一門課程'); return; }
+    const wb = XLSX.utils.book_new();
+    const groups = groupBy(finalResults.filter(r => selected.includes(r.Course)), 'Course');
+    if (Object.keys(groups).length === 0) { alert('所選課程中沒有學員資料'); return; }
+    Object.keys(groups).forEach(code => {
+      const list = groups[code]; const c = cMap[code] || {};
+      const wsData = [
+        ['課 程 簽 到 表（按工號排序）'],
+        ['課程代號', code, '課程名稱', c.name||'N/A'],
+        ['上課日期', c.date||'', '上課時間', c.time||''],
+        ['上課講師', c.lecturer||'', '課程時數', c.dur||''],
+        [],
+        ['序號','學員工號','姓名','部門','簽到欄 (Signature)','備註']
+      ];
+      list.forEach((s,i) => wsData.push([i+1, s.StaffID, s.Name, s.Dept, '', '']));
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = [{wch:6},{wch:15},{wch:15},{wch:22},{wch:30},{wch:15}];
+      ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+      const sheetName = code.replace(/[:\\/\?\*\[\]]/g,'_').substring(0,31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    XLSX.writeFile(wb, '簽到表合輯.xlsx');
+  } catch(e) {
+    alert('簽到表下載失敗：' + e.message);
+    console.error(e);
+  }
 }
 
-// ── 產出 3: 課程看板（列印視窗）────────────────────────────────────────────
+// ── 產出 3: 課程看板（列印視窗，仿 PDF 格式）──────────────────────────────
 function downloadCourseBoard() {
-  const groups = groupBy(finalResults, 'Course');
+  const selected = getSelectedCourses();
+  if (selected.length === 0) { alert('請至少選擇一門課程'); return; }
+  const groups = groupBy(finalResults.filter(r => selected.includes(r.Course)), 'Course');
   const win = window.open('', '_blank');
   if (!win) { alert('請允許彈出視窗以產生課程看板'); return; }
 
   const pages = Object.keys(groups).map(code => {
     const c = cMap[code] || {};
+    const names = groups[code].map(s => s.Name || s.StaffID);
+    const total = names.length;
+    // 姓名格狀排列，每格固定寬度
+    const nameGrid = names.map(n => `<div class="nbox">${n}</div>`).join('');
     return `<div class="page">
-      <div class="box">
-        <h1>學 員 派 訓 看 板</h1>
-        <hr>
-        <table>
-          <tr><td class="lbl">課程名稱</td><td class="val">${c.name||code}</td></tr>
-          <tr><td class="lbl">課程代號</td><td class="val">${code}</td></tr>
-          <tr><td class="lbl">上課日期</td><td class="val">${c.date||''}</td></tr>
-          <tr><td class="lbl">上課時間</td><td class="val">${c.time||''}</td></tr>
-          <tr><td class="lbl">上課講師</td><td class="val">${c.lecturer||''}</td></tr>
-          <tr><td class="lbl">預計人數</td><td class="val">${groups[code].length} 名</td></tr>
-        </table>
-        <p class="note">※ 請依工號序號完成簽名及報到作業</p>
+      <div style="font-size:13px;color:#555;margin-bottom:4px">課程時間：${c.date||''}　${c.time||''}</div>
+      <div style="font-size:13px;color:#555;margin-bottom:4px">課程代號：${code}</div>
+      <div style="font-size:13px;color:#555;margin-bottom:4px">課程名稱：${c.name||''}</div>
+      <div style="font-size:13px;color:#555;margin-bottom:4px">課程講師：${c.lecturer||''}</div>
+      <div style="font-size:13px;color:#555;margin-bottom:12px">課程地點：${c.location||c.room||''}</div>
+      <table class="info-table">
+        <tr><th>部門</th><th>學 員 名 單</th><th style="width:60px">人數</th></tr>
+        <tr>
+          <td style="text-align:center;font-size:13px;vertical-align:top;padding-top:10px">${[...new Set(groups[code].map(s=>s.Dept))].filter(Boolean).join('、')||'—'}</td>
+          <td><div class="name-grid">${nameGrid}</div></td>
+          <td style="text-align:center;font-weight:700;font-size:20px;vertical-align:middle">${total}</td>
+        </tr>
+      </table>
+      <div style="margin-top:8px;font-size:12px;color:#777;text-align:right">人數總計：${total}</div>
+      <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;border-top:1px solid #ccc;padding-top:8px">
+        瑞昱人資　教育訓練與文化活動單位
       </div>
     </div>`;
   }).join('');
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>課程看板</title>
   <style>
-    @media print{body{margin:0}.page{page-break-after:always}}
-    body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;background:#fff}
-    .page{width:297mm;min-height:210mm;display:flex;align-items:center;justify-content:center;padding:10mm}
-    .box{border:3px solid #333;padding:30px 50px;width:100%}
-    h1{font-size:36px;text-align:center;letter-spacing:8px;margin-bottom:16px}
-    hr{border:1.5px solid #333;margin-bottom:24px}
-    table{width:100%;border-collapse:collapse}
-    td{padding:10px 16px;font-size:22px}
-    .lbl{color:#555;width:140px;white-space:nowrap}
-    .val{font-weight:600;color:#111}
-    .note{text-align:center;margin-top:24px;font-size:14px;color:#777}
+    @media print{body{margin:0}.page{page-break-after:always;margin:0}}
+    body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;background:#fff;padding:0}
+    .page{width:190mm;margin:10mm auto;padding:10mm;border:2px solid #333;min-height:257mm;box-sizing:border-box}
+    .info-table{width:100%;border-collapse:collapse;border:1px solid #999;margin-top:4px}
+    .info-table th,.info-table td{border:1px solid #999;padding:8px 10px;font-size:13px}
+    .info-table th{background:#f0f0f0;font-weight:600;text-align:center}
+    .name-grid{display:flex;flex-wrap:wrap;gap:4px;padding:6px}
+    .nbox{width:64px;text-align:center;font-size:13px;padding:4px 2px;border:1px solid #ddd;border-radius:3px}
   </style></head><body>${pages}
   <script>window.onload=()=>window.print()<\/script></body></html>`);
   win.document.close();
