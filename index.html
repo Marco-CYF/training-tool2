@@ -324,15 +324,29 @@ async function startConvert() {
   for (const file of tFiles) {
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab);
-    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
-    const hIdx = raw.findIndex(r => r.some(c => String(c).includes('工號')));
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
+
+    // debug：顯示前 3 列讓使用者確認讀取內容
+    log(`📄 ${file.name} 前三列：`, 'info');
+    raw.slice(0,3).forEach((r,i) => {
+      const preview = r.map(c=>String(c||'').substring(0,10)).filter(Boolean).join(' | ');
+      log(`　列${i+1}：${preview}`, 'info');
+    });
+
+    // 嚴格比對「工號」（完全符合），找不到再退回包含比對
+    let hIdx = raw.findIndex(r => r.some(c => String(c).trim() === '工號'));
+    if (hIdx === -1) hIdx = raw.findIndex(r => r.some(c => String(c).includes('工號')));
     if (hIdx === -1) { log(`❌ ${file.name}：找不到「工號」標題列`, 'err'); continue; }
 
     const head = raw[hIdx];
-    const iID     = head.findIndex(c => String(c).includes('工號'));
+    const iID     = head.findIndex(c => String(c).trim() === '工號' || String(c).includes('工號'));
+    // Course 欄：完全符合避免誤抓 "Course Name"
     const iCourse = head.findIndex(c => /^course$/i.test(String(c).trim()) || String(c).trim() === '課程代號');
-    const iName   = head.findIndex(c => String(c).includes('姓名') || /^name$/i.test(String(c).trim()));
-    const iDept   = head.findIndex(c => String(c).includes('部門') || /^dept$/i.test(String(c).trim()));
+    // Name 欄：完全符合避免誤抓 "Course Name"
+    const iName   = head.findIndex(c => String(c).trim() === '姓名' || String(c).trim() === 'Name');
+    const iDept   = head.findIndex(c => String(c).trim() === '部門' || /^dept$/i.test(String(c).trim()));
+
+    log(`　→ 標題列:${hIdx+1} | 工號欄:${iID} | Course欄:${iCourse} | 姓名欄:${iName} | 部門欄:${iDept}`, 'info');
 
     // ── 判斷格式 ──
     // 直式（每行一筆）：有 Course 欄 → 直接讀每行
