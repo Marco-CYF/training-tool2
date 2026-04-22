@@ -70,6 +70,9 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
 .dl-item:last-of-type{border-bottom:none}
 .dl-name{font-size:14px;font-weight:600}
 .hidden{display:none!important}
+.type-filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.75rem}
+.type-btn{font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;cursor:pointer;border:1.5px solid var(--border2);background:var(--bg);color:var(--text2);transition:all .15s}
+.type-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 </style>
 </head>
 <body>
@@ -153,18 +156,24 @@ h1{font-size:22px;font-weight:600;margin-bottom:.5rem}
     <div id="resultPanel" class="hidden">
       <div class="panel">
         <div class="sgrid" id="sgrid"></div>
-        <!-- 課程選擇器 -->
+        <!-- 課程篩選 + 選擇器 -->
         <div style="margin-bottom:1.25rem">
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:.5rem">選擇課程（單選或全選）</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:.6rem">篩選課程類型</div>
+          <div class="type-filter" id="typeFilter">
+            <button class="type-btn active" onclick="filterType('all',this)">全部</button>
+            <button class="type-btn" onclick="filterType('classroom',this)">教室課程</button>
+            <button class="type-btn" onclick="filterType('elearn',this)">E化課程</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:.5rem">
             <button class="btn" style="font-size:12px;padding:5px 12px" onclick="selectAllCourses(true)">全選</button>
             <button class="btn" style="font-size:12px;padding:5px 12px" onclick="selectAllCourses(false)">全不選</button>
+            <span style="font-size:12px;color:var(--text3);margin-left:4px" id="selCount"></span>
           </div>
-          <div id="courseCheckboxes" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--rs);padding:10px;background:var(--bg2)"></div>
+          <div id="courseCheckboxes" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--rs);padding:10px;background:var(--bg2)"></div>
         </div>
         <div class="dl-item"><span class="dl-name">📊 Data All 總表（工號排序）</span><button class="btn p" id="btnAll">下載 Excel</button></div>
         <div class="dl-item"><span class="dl-name">📝 簽到表（已選課程）</span><button class="btn p" id="btnSign">下載 Excel</button></div>
-        <div class="dl-item"><span class="dl-name">📺 課程看板（已選課程）</span><button class="btn p" id="btnBoard">開啟列印</button></div>
+        <div class="dl-item"><span class="dl-name">📺 課程看板（已選課程）</span><button class="btn p" id="btnBoard">下載 Excel</button></div>
         <div class="brow" style="margin-top:2rem"><button class="btn" onclick="location.reload()">重新開始</button></div>
       </div>
     </div>
@@ -421,16 +430,9 @@ async function startConvert() {
     <div class="scard"><div class="snum">${finalResults.length}</div><div class="slbl2">總記錄數</div></div>
     <div class="scard"><div class="snum">${courseList.length}</div><div class="slbl2">課程數量</div></div>`;
 
-  // 建立課程 checkbox 列表
-  const cbContainer = document.getElementById('courseCheckboxes');
-  cbContainer.innerHTML = courseList.map(code => {
-    const c = cMap[code] || {};
-    const label = c.name ? `${code}　${c.name}` : code;
-    return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" class="course-cb" value="${code}" checked style="width:15px;height:15px;cursor:pointer">
-      <span>${label}　<span style="color:var(--text3);font-size:12px">${c.date||''} ${c.time||''}</span></span>
-    </label>`;
-  }).join('');
+  // 建立課程 checkbox 列表（按課程代號排序）
+  courseList.sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+  buildCourseCheckboxes(courseList);
 
   document.getElementById('resultPanel').classList.remove('hidden');
   document.getElementById('btnAll').onclick   = downloadDataAll;
@@ -438,12 +440,67 @@ async function startConvert() {
   document.getElementById('btnBoard').onclick = downloadCourseBoard;
 }
 
+// E化課程判斷：AM/PM 欄位為 'E' 或課程代號含特定前綴
+function isElearn(code) {
+  const results = finalResults.filter(r => r.Course === code);
+  if (results.length > 0 && results[0].R_Code) {
+    // 從原始派訓名單的 AM/PM 或 E/Classroom 欄判斷
+  }
+  const c = cMap[code] || {};
+  const loc = (c.location||c.room||'').toLowerCase();
+  // 沒有地點 或 地點含 'e化'/'線上'/'elearn' 視為 E化
+  if (!loc || loc.includes('e化') || loc.includes('線上') || loc.includes('elearn') || loc.includes('online')) return true;
+  return false;
+}
+
+function getCourseType(code) {
+  return isElearn(code) ? 'elearn' : 'classroom';
+}
+
+function buildCourseCheckboxes(list) {
+  const cbContainer = document.getElementById('courseCheckboxes');
+  cbContainer.innerHTML = list.map(code => {
+    const c = cMap[code] || {};
+    const label = c.name ? `${code}　${c.name}` : code;
+    const type = getCourseType(code);
+    const typeBadge = type === 'elearn'
+      ? '<span style="font-size:10px;background:#E6F1FB;color:#185FA5;border-radius:4px;padding:1px 6px;margin-left:4px">E化</span>'
+      : '<span style="font-size:10px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 6px;margin-left:4px">教室</span>';
+    return `<label class="cb-row" data-type="${type}" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:2px 0">
+      <input type="checkbox" class="course-cb" value="${code}" checked style="width:15px;height:15px;cursor:pointer;flex-shrink:0">
+      <span style="flex:1">${label}${typeBadge}<span style="color:var(--text3);font-size:12px;margin-left:6px">${c.date||''} ${c.time||''}</span></span>
+    </label>`;
+  }).join('');
+  updateSelCount();
+}
+
+function filterType(type, btn) {
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.cb-row').forEach(row => {
+    row.style.display = (type === 'all' || row.dataset.type === type) ? 'flex' : 'none';
+  });
+}
+
+function updateSelCount() {
+  const total = document.querySelectorAll('.course-cb').length;
+  const sel   = document.querySelectorAll('.course-cb:checked').length;
+  const el = document.getElementById('selCount');
+  if (el) el.textContent = `已選 ${sel} / ${total} 門`;
+}
+
 function getSelectedCourses() {
   return [...document.querySelectorAll('.course-cb:checked')].map(cb => cb.value);
 }
 
 function selectAllCourses(val) {
-  document.querySelectorAll('.course-cb').forEach(cb => cb.checked = val);
+  document.querySelectorAll('.cb-row').forEach(row => {
+    if (row.style.display !== 'none') {
+      const cb = row.querySelector('.course-cb');
+      if (cb) cb.checked = val;
+    }
+  });
+  updateSelCount();
 }
 
 // ── 產出 1: Data All ──────────────────────────────────────────────────────────
@@ -458,7 +515,7 @@ function downloadDataAll() {
   XLSX.writeFile(wb, 'Converted_DataAll.xlsx');
 }
 
-// ── 產出 2: 簽到表 ────────────────────────────────────────────────────────────
+// ── 產出 2: 簽到表（仿 A10 格式：橫向部門分欄） ─────────────────────────────
 function downloadSignSheets() {
   try {
     if (typeof XLSX === 'undefined') { alert('試算表函式庫尚未載入，請重新整理頁面後再試'); return; }
@@ -467,80 +524,269 @@ function downloadSignSheets() {
     const wb = XLSX.utils.book_new();
     const groups = groupBy(finalResults.filter(r => selected.includes(r.Course)), 'Course');
     if (Object.keys(groups).length === 0) { alert('所選課程中沒有學員資料'); return; }
-    Object.keys(groups).forEach(code => {
+
+    // 課程代號排序
+    const sortedCodes = Object.keys(groups).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+
+    sortedCodes.forEach(code => {
       const list = groups[code]; const c = cMap[code] || {};
-      const wsData = [
-        ['課 程 簽 到 表（按工號排序）'],
-        ['課程代號', code, '課程名稱', c.name||'N/A'],
-        ['上課日期', c.date||'', '上課時間', c.time||''],
-        ['上課講師', c.lecturer||'', '課程時數', c.dur||''],
-        [],
-        ['序號','學員工號','姓名','部門','簽到欄 (Signature)','備註']
-      ];
-      list.forEach((s,i) => wsData.push([i+1, s.StaffID, s.Name, s.Dept, '', '']));
+      const total = list.length;
+
+      // 按部門分組，部門內按工號排序
+      const deptMap = {};
+      list.forEach(s => {
+        const d = s.Dept || '未分部門';
+        if (!deptMap[d]) deptMap[d] = [];
+        deptMap[d].push(s);
+      });
+      const depts = Object.keys(deptMap).sort();
+      const maxRows = Math.max(...depts.map(d => deptMap[d].length));
+      const COLS_PER_DEPT = 4; // 工號、姓名、簽名、備註
+
+      // ── 標題區（列 0～4） ──
+      const titleText = '2026年【瑞昱企業大學】新進速度學院研發人員即戰力課程簽到表  In-house Training and Attendance Sign-up Form';
+      const totalCols = depts.length * COLS_PER_DEPT;
+      const wsData = [];
+
+      // R0: 大標題（合併全列）
+      const r0 = Array(totalCols).fill('');
+      r0[0] = titleText;
+      wsData.push(r0);
+
+      // R1: 課程名稱
+      const r1 = Array(totalCols).fill('');
+      r1[0] = '課程名稱  Class name'; r1[1] = c.name||'';
+      wsData.push(r1);
+
+      // R2: 日期 + 代碼
+      const r2 = Array(totalCols).fill('');
+      r2[0] = '上課日期  Class date'; r2[1] = c.date||'';
+      r2[4] = '課程代碼  Class Number'; r2[5] = code;
+      wsData.push(r2);
+
+      // R3: 時間 + 地點
+      const r3 = Array(totalCols).fill('');
+      r3[0] = '上課時間  Class time'; r3[1] = c.time||'';
+      r3[4] = '上課地點  Class site'; r3[5] = c.location||c.room||'';
+      wsData.push(r3);
+
+      // R4: 講師
+      const r4 = Array(totalCols).fill('');
+      r4[0] = '講師姓名  Name of instructor'; r4[1] = c.lecturer||'';
+      wsData.push(r4);
+
+      // R5: 部門團隊簽到表 banner
+      const r5 = Array(totalCols).fill('');
+      r5[0] = '部 門 團 隊 簽 到 表';
+      wsData.push(r5);
+
+      // R6: 部門名稱列
+      const r6 = Array(totalCols).fill('');
+      depts.forEach((d,i) => { r6[i*COLS_PER_DEPT] = d; });
+      wsData.push(r6);
+
+      // R7: 欄位標題列
+      const r7 = Array(totalCols).fill('');
+      depts.forEach((_,i) => {
+        r7[i*COLS_PER_DEPT+0] = '工號';
+        r7[i*COLS_PER_DEPT+1] = '姓名';
+        r7[i*COLS_PER_DEPT+2] = '簽名';
+        r7[i*COLS_PER_DEPT+3] = '備註';
+      });
+      wsData.push(r7);
+
+      // R8+: 學員資料
+      for (let row=0; row<maxRows; row++) {
+        const rData = Array(totalCols).fill('');
+        depts.forEach((d,di) => {
+          const s = deptMap[d][row];
+          if (s) {
+            rData[di*COLS_PER_DEPT+0] = s.StaffID;
+            rData[di*COLS_PER_DEPT+1] = s.Name;
+          }
+        });
+        wsData.push(rData);
+      }
+
+      // 最後兩列：應到/實到
+      const rAtt = Array(totalCols).fill('');
+      rAtt[0] = `應到人數：${total}`;
+      rAtt[4] = '缺席人數：';
+      wsData.push(rAtt);
+      const rReal = Array(totalCols).fill('');
+      rReal[0] = '實到人數：';
+      wsData.push(rReal);
+
       const ws = XLSX.utils.aoa_to_sheet(wsData);
-      ws['!cols'] = [{wch:6},{wch:15},{wch:15},{wch:22},{wch:30},{wch:15}];
-      ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+
+      // 欄寬：每個部門 4 欄 = 工號12、姓名12、簽名16、備註10
+      ws['!cols'] = depts.flatMap(() => [{wch:12},{wch:12},{wch:16},{wch:10}]);
+
+      // 合併：標題列合併全列
+      const merges = [
+        {s:{r:0,c:0},e:{r:0,c:totalCols-1}},
+        {s:{r:1,c:0},e:{r:1,c:totalCols-1}},
+        {s:{r:4,c:0},e:{r:4,c:totalCols-1}},
+        {s:{r:5,c:0},e:{r:5,c:totalCols-1}},
+      ];
+      // 各部門名稱合併 4 欄
+      depts.forEach((_,i) => {
+        merges.push({s:{r:6,c:i*COLS_PER_DEPT},e:{r:6,c:i*COLS_PER_DEPT+COLS_PER_DEPT-1}});
+      });
+      ws['!merges'] = merges;
+
       const sheetName = code.replace(/[:\\/\?\*\[\]]/g,'_').substring(0,31);
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     });
-    XLSX.writeFile(wb, '簽到表合輯.xlsx');
+
+    const fname = selected.length === 1 ? `簽到表_${selected[0]}.xlsx` : '簽到表合輯.xlsx';
+    XLSX.writeFile(wb, fname);
   } catch(e) {
     alert('簽到表下載失敗：' + e.message);
     console.error(e);
   }
 }
 
-// ── 產出 3: 課程看板（列印視窗，仿 PDF 格式）──────────────────────────────
+// ── 產出 3: 課程看板 Excel ───────────────────────────────────────────────────
 function downloadCourseBoard() {
-  const selected = getSelectedCourses();
-  if (selected.length === 0) { alert('請至少選擇一門課程'); return; }
-  const groups = groupBy(finalResults.filter(r => selected.includes(r.Course)), 'Course');
-  const win = window.open('', '_blank');
-  if (!win) { alert('請允許彈出視窗以產生課程看板'); return; }
+  try {
+    if (typeof XLSX === 'undefined') { alert('試算表函式庫尚未載入，請重新整理頁面後再試'); return; }
+    const selected = getSelectedCourses();
+    if (selected.length === 0) { alert('請至少選擇一門課程'); return; }
+    const groups = groupBy(finalResults.filter(r => selected.includes(r.Course)), 'Course');
+    if (Object.keys(groups).length === 0) { alert('所選課程中沒有學員資料'); return; }
 
-  const pages = Object.keys(groups).map(code => {
-    const c = cMap[code] || {};
-    const names = groups[code].map(s => s.Name || s.StaffID);
-    const total = names.length;
-    // 姓名格狀排列，每格固定寬度
-    const nameGrid = names.map(n => `<div class="nbox">${n}</div>`).join('');
-    return `<div class="page">
-      <div style="font-size:13px;color:#555;margin-bottom:4px">課程時間：${c.date||''}　${c.time||''}</div>
-      <div style="font-size:13px;color:#555;margin-bottom:4px">課程代號：${code}</div>
-      <div style="font-size:13px;color:#555;margin-bottom:4px">課程名稱：${c.name||''}</div>
-      <div style="font-size:13px;color:#555;margin-bottom:4px">課程講師：${c.lecturer||''}</div>
-      <div style="font-size:13px;color:#555;margin-bottom:12px">課程地點：${c.location||c.room||''}</div>
-      <table class="info-table">
-        <tr><th>部門</th><th>學 員 名 單</th><th style="width:60px">人數</th></tr>
-        <tr>
-          <td style="text-align:center;font-size:13px;vertical-align:top;padding-top:10px">${[...new Set(groups[code].map(s=>s.Dept))].filter(Boolean).join('、')||'—'}</td>
-          <td><div class="name-grid">${nameGrid}</div></td>
-          <td style="text-align:center;font-weight:700;font-size:20px;vertical-align:middle">${total}</td>
-        </tr>
-      </table>
-      <div style="margin-top:8px;font-size:12px;color:#777;text-align:right">人數總計：${total}</div>
-      <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;border-top:1px solid #ccc;padding-top:8px">
-        瑞昱人資　教育訓練與文化活動單位
-      </div>
-    </div>`;
-  }).join('');
+    const wb = XLSX.utils.book_new();
+    const sortedCodes = Object.keys(groups).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
 
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>課程看板</title>
-  <style>
-    @media print{body{margin:0}.page{page-break-after:always;margin:0}}
-    body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;background:#fff;padding:0}
-    .page{width:190mm;margin:10mm auto;padding:10mm;border:2px solid #333;min-height:257mm;box-sizing:border-box}
-    .info-table{width:100%;border-collapse:collapse;border:1px solid #999;margin-top:4px}
-    .info-table th,.info-table td{border:1px solid #999;padding:8px 10px;font-size:13px}
-    .info-table th{background:#f0f0f0;font-weight:600;text-align:center}
-    .name-grid{display:flex;flex-wrap:wrap;gap:4px;padding:6px}
-    .nbox{width:64px;text-align:center;font-size:13px;padding:4px 2px;border:1px solid #ddd;border-radius:3px}
-  </style></head><body>${pages}
-  <script>window.onload=()=>window.print()<\/script></body></html>`);
-  win.document.close();
+    sortedCodes.forEach(code => {
+      const c = cMap[code] || {};
+      const list = groups[code];
+      const total = list.length;
+      const yr = (c.date||'2026').substring(0,4);
+
+      // 按部門分組
+      const deptMap = {};
+      list.forEach(s => {
+        const d = s.Dept || '研發中心';
+        if (!deptMap[d]) deptMap[d] = [];
+        deptMap[d].push(s);
+      });
+      const depts = Object.keys(deptMap).sort();
+
+      // ── 建構 AOA（Array of Arrays）──
+      // 每個姓名格：名字 + 空白格 for visual spacing
+      // 姓名橫排：每列最多 NAMES_PER_ROW 個，每個姓名佔 1 欄
+      const NAMES_PER_ROW = 8;
+      const NAME_COL_START = 1; // 部門欄 col=0，姓名從 col=1 開始，人數在最後欄
+      const CNT_COL = NAME_COL_START + NAMES_PER_ROW; // col=9
+
+      const wsData = [];
+      const merges = [];
+
+      // ── Row 0: 大標題 ──
+      const titleRow = Array(CNT_COL+1).fill('');
+      titleRow[0] = `【${yr}年 瑞昱新進研發人員「即戰力」教育訓練課程─學員名單】`;
+      wsData.push(titleRow);
+      merges.push({s:{r:0,c:0},e:{r:0,c:CNT_COL}});
+
+      // ── Row 1: 課程時間 + 課程代號 ──
+      const r1 = Array(CNT_COL+1).fill('');
+      r1[0] = `課程時間：${c.date||''}　${c.time||''}`;
+      r1[5] = `課程代號：${code}`;
+      wsData.push(r1);
+      merges.push({s:{r:1,c:0},e:{r:1,c:4}});
+      merges.push({s:{r:1,c:5},e:{r:1,c:CNT_COL}});
+
+      // ── Row 2: 課程名稱 ──
+      const r2 = Array(CNT_COL+1).fill('');
+      r2[0] = `課程名稱：${c.name||''}`;
+      wsData.push(r2);
+      merges.push({s:{r:2,c:0},e:{r:2,c:CNT_COL}});
+
+      // ── Row 3: 課程講師 + 課程地點 ──
+      const r3 = Array(CNT_COL+1).fill('');
+      r3[0] = `課程講師：${c.lecturer||''}`;
+      r3[5] = `課程地點：${c.location||c.room||''}`;
+      wsData.push(r3);
+      merges.push({s:{r:3,c:0},e:{r:3,c:4}});
+      merges.push({s:{r:3,c:5},e:{r:3,c:CNT_COL}});
+
+      // ── Row 4: 空白分隔 ──
+      wsData.push(Array(CNT_COL+1).fill(''));
+
+      // ── Row 5: 表頭 ──
+      const hRow = Array(CNT_COL+1).fill('');
+      hRow[0] = '部門';
+      hRow[NAME_COL_START] = '員　　名　　單';
+      hRow[CNT_COL] = '人數';
+      wsData.push(hRow);
+      merges.push({s:{r:5,c:NAME_COL_START},e:{r:5,c:CNT_COL-1}});
+
+      // ── 部門資料列 ──
+      depts.forEach(dept => {
+        const members = deptMap[dept];
+        // 分成每 NAMES_PER_ROW 一列
+        const chunks = [];
+        for (let i=0; i<members.length; i+=NAMES_PER_ROW) chunks.push(members.slice(i,i+NAMES_PER_ROW));
+
+        chunks.forEach((chunk, ci) => {
+          const rowIdx = wsData.length;
+          const dRow = Array(CNT_COL+1).fill('');
+          if (ci === 0) dRow[0] = dept; // 部門名稱只在第一列顯示
+          chunk.forEach((s, ni) => { dRow[NAME_COL_START + ni] = s.Name || s.StaffID; });
+          if (ci === 0) dRow[CNT_COL] = members.length;
+          wsData.push(dRow);
+          // 如果部門跨多列，合併部門欄和人數欄
+          if (chunks.length > 1 && ci === 0) {
+            merges.push({s:{r:rowIdx,c:0},e:{r:rowIdx+chunks.length-1,c:0}});
+            merges.push({s:{r:rowIdx,c:CNT_COL},e:{r:rowIdx+chunks.length-1,c:CNT_COL}});
+          }
+        });
+      });
+
+      // ── 人數總計列 ──
+      const totalRowIdx = wsData.length;
+      const totRow = Array(CNT_COL+1).fill('');
+      totRow[CNT_COL-1] = '人數總計';
+      totRow[CNT_COL] = total;
+      wsData.push(totRow);
+      merges.push({s:{r:totalRowIdx,c:0},e:{r:totalRowIdx,c:CNT_COL-2}});
+
+      // ── 負責人列 ──
+      const respRow = Array(CNT_COL+1).fill('');
+      respRow[0] = `瑞昱人資　教育訓練與文化活動單位`;
+      respRow[5] = `本課程規劃暨執行負責人：${c.responsible||''}`;
+      wsData.push(respRow);
+      const rIdx = wsData.length-1;
+      merges.push({s:{r:rIdx,c:0},e:{r:rIdx,c:4}});
+      merges.push({s:{r:rIdx,c:5},e:{r:rIdx,c:CNT_COL}});
+
+      // ── 建立工作表 ──
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!merges'] = merges;
+
+      // 欄寬：部門欄寬18、姓名欄各8、人數欄6
+      ws['!cols'] = [
+        {wch:18}, // 部門
+        ...Array(NAMES_PER_ROW).fill({wch:8}), // 姓名 ×8
+        {wch:6}  // 人數
+      ];
+
+      // 列高：標題列加高
+      ws['!rows'] = [{hpt:22},...Array(wsData.length-1).fill({hpt:18})];
+
+      const sheetName = code.replace(/[:\\\/\?\*\[\]]/g,'_').substring(0,31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    const fname = selected.length === 1 ? `課程看板_${selected[0]}.xlsx` : '課程看板合輯.xlsx';
+    XLSX.writeFile(wb, fname);
+  } catch(e) {
+    alert('課程看板下載失敗：' + e.message);
+    console.error(e);
+  }
 }
-
 // ── 工具函式 ──────────────────────────────────────────────────────────────────
 function groupBy(arr, key) {
   return arr.reduce((acc, obj) => { (acc[obj[key]] = acc[obj[key]]||[]).push(obj); return acc; }, {});
