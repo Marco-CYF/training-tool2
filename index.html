@@ -4,17 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>派訓名單轉換工具 V4.2</title>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 window.addEventListener('load', function() {
   if (typeof XLSX === 'undefined') {
     var s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
     s.onload = function(){ console.log('SheetJS 備援 CDN 載入成功'); };
     s.onerror = function(){ alert('試算表函式庫載入失敗，請確認網路連線後重新整理頁面'); };
     document.head.appendChild(s);
   }
 });
+
+// 安全下載函式：用 Blob + <a> 避免 SharedArrayBuffer 限制
+function safeDownload(wb, filename) {
+  const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -620,7 +632,7 @@ function downloadDataAll() {
   const ws = XLSX.utils.json_to_sheet(out);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'DataAll');
-  XLSX.writeFile(wb, 'Converted_DataAll.xlsx');
+  safeDownload(wb, 'Converted_DataAll.xlsx');
 }
 
 // ── 預覽 ─────────────────────────────────────────────────────────────────────
@@ -741,9 +753,15 @@ const SIGN_BLOCK_H = 29;
 const SIGN_MAX     = 19;
 
 function buildSignWb(ci, slotsArr) {
-  const tmplBin = Uint8Array.from(atob(SIGN_TMPL_B64), c=>c.charCodeAt(0));
-  const tmplWb  = XLSX.read(tmplBin, {type:'array', cellStyles:true});
-  const tmplWs  = tmplWb.Sheets['簽到表 (即戰力)'];
+  let tmplWs;
+  try {
+    const tmplBin = Uint8Array.from(atob(SIGN_TMPL_B64), c=>c.charCodeAt(0));
+    const tmplWb  = XLSX.read(tmplBin, {type:'array', cellStyles:true});
+    tmplWs = tmplWb.Sheets['簽到表 (即戰力)'];
+    if(!tmplWs) throw new Error('找不到「簽到表 (即戰力)」工作表');
+  } catch(e) {
+    alert('模板載入失敗：'+e.message); throw e;
+  }
 
   const wb = XLSX.utils.book_new();
   const ws = {};
@@ -865,6 +883,7 @@ function buildSignWb(ci, slotsArr) {
 }
 
 function downloadSignSheets() {
+  try {
   if(typeof XLSX==='undefined'){alert('試算表函式庫尚未載入，請重新整理');return;}
   const selected = getSelectedCourses();
   if(selected.length===0){alert('請至少選擇一門課程');return;}
@@ -893,7 +912,7 @@ function downloadSignSheets() {
     function saveSign(members, suffix){
       const slots = buildSlots(members);
       const wb    = buildSignWb(ci, slots);
-      XLSX.writeFile(wb, `簽到表_${code}${suffix}.xlsx`);
+      safeDownload(wb, `簽到表_${code}${suffix}.xlsx`);
     }
 
     if(!hasLoc){ saveSign(list,''); }
@@ -902,6 +921,9 @@ function downloadSignSheets() {
       if(bioList.length>0)  saveSign(bioList, '_生醫廠');
     }
   });
+  } catch(e) { alert('簽到表下載失敗：'+e.message+'
+
+'+e.stack); console.error(e); }
 }
 
 // ── 產出 3: 課程看板 ──────────────────────────────────────────────────────────
@@ -918,6 +940,7 @@ const B_S = {
 const BOARD_COL_W = [9,9,13,9,9,13,13,13,13,13,13,13,13,13,13];
 
 function downloadCourseBoard() {
+  try {
   if(typeof XLSX==='undefined'){alert('試算表函式庫尚未載入，請重新整理');return;}
   const selected = getSelectedCourses();
   if(selected.length===0){alert('請至少選擇一門課程');return;}
@@ -1010,8 +1033,11 @@ function downloadCourseBoard() {
     ws['!pageSetup'] = {orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
 
     XLSX.utils.book_append_sheet(wb, ws, '學員名單');
-    XLSX.writeFile(wb, `課程看板_${code}.xlsx`);
+    safeDownload(wb, `課程看板_${code}.xlsx`);
   });
+  } catch(e) { alert('課程看板下載失敗：'+e.message+'
+
+'+e.stack); console.error(e); }
 }
 
 // ── 工具函式 ──────────────────────────────────────────────────────────────────
