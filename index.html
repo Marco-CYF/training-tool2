@@ -16,16 +16,31 @@ window.addEventListener('load', function() {
   }
 });
 
-// 安全下載函式：用 Blob + <a> 避免 SharedArrayBuffer 限制
+// 安全下載：雙重備援，Blob優先，失敗改用 base64 data URI
 function safeDownload(wb, filename) {
-  const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  console.log('safeDownload called:', filename, 'wb sheets:', wb && wb.SheetNames);
+  try {
+    const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    console.log('buf size:', buf.byteLength);
+    const blob = new Blob([buf], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  } catch(e1) {
+    try {
+      const b64 = XLSX.write(wb, {bookType:'xlsx', type:'base64'});
+      const a = document.createElement('a');
+      a.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
+      a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+    } catch(e2) {
+      alert('下載失敗\nBlob: ' + e1.message + '\nBase64: ' + e2.message);
+    }
+  }
 }
 </script>
 <style>
@@ -884,8 +899,10 @@ function buildSignWb(ci, slotsArr) {
 
 function downloadSignSheets() {
   try {
+  console.log('downloadSignSheets called, XLSX:', typeof XLSX, 'finalResults:', (finalResults||[]).length);
   if(typeof XLSX==='undefined'){alert('試算表函式庫尚未載入，請重新整理');return;}
   const selected = getSelectedCourses();
+  console.log('selected:', selected);
   if(selected.length===0){alert('請至少選擇一門課程');return;}
 
   selected.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).forEach(code=>{
@@ -921,9 +938,7 @@ function downloadSignSheets() {
       if(bioList.length>0)  saveSign(bioList, '_生醫廠');
     }
   });
-  } catch(e) { alert('簽到表下載失敗：'+e.message+'
-
-'+e.stack); console.error(e); }
+  } catch(e) { alert('簽到表下載失敗：' + e.message); console.error(e); }
 }
 
 // ── 產出 3: 課程看板 ──────────────────────────────────────────────────────────
@@ -941,8 +956,10 @@ const BOARD_COL_W = [9,9,13,9,9,13,13,13,13,13,13,13,13,13,13];
 
 function downloadCourseBoard() {
   try {
+  console.log('downloadCourseBoard called, XLSX:', typeof XLSX, 'finalResults:', (finalResults||[]).length);
   if(typeof XLSX==='undefined'){alert('試算表函式庫尚未載入，請重新整理');return;}
   const selected = getSelectedCourses();
+  console.log('selected:', selected);
   if(selected.length===0){alert('請至少選擇一門課程');return;}
 
   selected.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).forEach(code=>{
@@ -1035,9 +1052,7 @@ function downloadCourseBoard() {
     XLSX.utils.book_append_sheet(wb, ws, '學員名單');
     safeDownload(wb, `課程看板_${code}.xlsx`);
   });
-  } catch(e) { alert('課程看板下載失敗：'+e.message+'
-
-'+e.stack); console.error(e); }
+  } catch(e) { alert('課程看板下載失敗：' + e.message); console.error(e); }
 }
 
 // ── 工具函式 ──────────────────────────────────────────────────────────────────
